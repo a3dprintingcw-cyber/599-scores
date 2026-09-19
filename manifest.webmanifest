@@ -1,0 +1,84 @@
+{
+  "name": "599 Scores",
+  "short_name": "599 Scores",
+  "description": "Scores, tables, scorers, assists and transfers for every Curacao football competition.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08131F",
+  "theme_color": "#08131F",
+  "lang": "pap",
+  "dir": "ltr",
+  "categories": [
+    "sports",
+    "news"
+  ],
+  "icons": [
+    {
+      "src": "./icon-48.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Partidonan",
+      "short_name": "Partido",
+      "url": "./index.html#/matches"
+    },
+    {
+      "name": "Tabel",
+      "short_name": "Tabel",
+      "url": "./index.html#/table"
+    },
+    {
+      "name": "Statistika",
+      "short_name": "Stats",
+      "url": "./index.html#/stats"
+    }
+  ]
+}
