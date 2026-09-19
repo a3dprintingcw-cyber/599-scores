@@ -1,0 +1,218 @@
+{
+ "_comment": "Everything the FFK does not publish, plus anything you set yourself. This file survives every automatic update. Edit it here, or edit in the app and use Editor > Mas > Backup to export a fresh copy and paste the relevant parts back in.",
+ "transfers": [],
+ "news": [],
+ "referees": [],
+ "refledger": [],
+ "refrules": {
+  "div": {
+   "prome": 30,
+   "segundo": 22,
+   "terser": 16
+  },
+  "role": {
+   "ref": 1,
+   "ar": 0.6,
+   "fourth": 0.35
+  },
+  "shortNotice": 0.5,
+  "report": 5,
+  "levels": [
+   [
+    "bronze",
+    0
+   ],
+   [
+    "silver",
+    10
+   ],
+   [
+    "gold",
+    25
+   ],
+   [
+    "elite",
+    50
+   ]
+  ]
+ },
+ "refinfo": {
+  "join_pa": "Bo tin 16 aña òf mas i bo ke fluit? FFK ta duna e kurso, e app ta konta bo partidonan i bo ta kuminsá gana punto for di bo promé partido.",
+  "join_en": "16 or over and want to take up the whistle? The FFK runs the course, this app counts your matches, and you start earning points from your first game.",
+  "contact": "https://ffk.cw/become-a-referee/"
+ },
+ "rewards": [
+  {
+   "id": "w1",
+   "cost": 110,
+   "stock": 20,
+   "type": "coupon",
+   "sponsorId": "s3",
+   "value": "25 XCG",
+   "title_pa": "Rekarga di telefon",
+   "title_en": "Phone top-up",
+   "note_pa": "Rekarga di 25 XCG pa kualke proveedó.",
+   "note_en": "25 XCG top-up on any provider."
+  },
+  {
+   "id": "w2",
+   "cost": 180,
+   "stock": 14,
+   "type": "coupon",
+   "sponsorId": "s4",
+   "value": "40 XCG",
+   "title_pa": "Vale di kuminda",
+   "title_en": "Meal voucher",
+   "note_pa": "Kuminda pa dos despues di un fin di siman di trabou.",
+   "note_en": "A meal for two after a weekend on the whistle."
+  },
+  {
+   "id": "w3",
+   "cost": 220,
+   "stock": 12,
+   "type": "coupon",
+   "sponsorId": "s1",
+   "value": "50 XCG",
+   "title_pa": "Vale di gasolin",
+   "title_en": "Fuel voucher",
+   "note_pa": "Pa e biahenan pa kancha na Banda Abou.",
+   "note_en": "For the drives out to the Banda Abou pitches."
+  },
+  {
+   "id": "w4",
+   "cost": 260,
+   "stock": 10,
+   "type": "coupon",
+   "sponsorId": "s5",
+   "value": "60 XCG",
+   "title_pa": "Bon di sport shop",
+   "title_en": "Sports shop voucher",
+   "note_pa": "Sapatu, medya i ekipo di entrenamentu.",
+   "note_en": "Boots, socks and training gear."
+  },
+  {
+   "id": "w5",
+   "cost": 320,
+   "stock": 8,
+   "type": "coupon",
+   "sponsorId": "s2",
+   "value": "75 XCG",
+   "title_pa": "Vale di supermerkado",
+   "title_en": "Supermarket voucher",
+   "note_pa": "",
+   "note_en": ""
+  },
+  {
+   "id": "w6",
+   "cost": 430,
+   "stock": 4,
+   "type": "coupon",
+   "sponsorId": "s6",
+   "value": "100 XCG",
+   "title_pa": "Servisio di outo",
+   "title_en": "Car service voucher",
+   "note_pa": "Mantenshon òf tayer.",
+   "note_en": "Maintenance or tyres."
+  },
+  {
+   "id": "w7",
+   "cost": 400,
+   "stock": 6,
+   "type": "kit",
+   "sponsorId": "",
+   "value": "FFK",
+   "title_pa": "Set di arbitrahe nobo",
+   "title_en": "New officiating kit",
+   "note_pa": "Flùit, karchi, bandera i reloh.",
+   "note_en": "Whistle, cards, flags and watch."
+  },
+  {
+   "id": "w8",
+   "cost": 600,
+   "stock": 5,
+   "type": "course",
+   "sponsorId": "",
+   "value": "FFK",
+   "title_pa": "Kurso FFK pagá",
+   "title_en": "FFK course paid",
+   "note_pa": "E siguiente nivel di sertifikashon, pagá kompletu.",
+   "note_en": "Your next certification level, paid in full."
+  },
+  {
+   "id": "w9",
+   "cost": 150,
+   "stock": 99,
+   "type": "perk",
+   "sponsorId": "",
+   "value": "1 luna",
+   "title_pa": "Prioridat riba asignashon",
+   "title_en": "Priority on assignments",
+   "note_pa": "Promé skohensia riba e partidonan di e luna ku ta bin.",
+   "note_en": "First pick of next month's fixtures."
+  },
+  {
+   "id": "w10",
+   "cost": 900,
+   "stock": 2,
+   "type": "perk",
+   "sponsorId": "",
+   "value": "FFK",
+   "title_pa": "Biahe pa un tornei afó",
+   "title_en": "Trip to an away tournament",
+   "note_pa": "Biahe i estadia pa un tornei regional.",
+   "note_en": "Travel and stay for a regional tournament."
+  }
+ ],
+ "sponsors": [
+  {
+   "id": "s1",
+   "name": "Sponsor slot open",
+   "cat": "kombustibel",
+   "note": "",
+   "open": true
+  },
+  {
+   "id": "s2",
+   "name": "Sponsor slot open",
+   "cat": "supermerkado",
+   "note": "",
+   "open": true
+  },
+  {
+   "id": "s3",
+   "name": "Sponsor slot open",
+   "cat": "telekom",
+   "note": "",
+   "open": true
+  },
+  {
+   "id": "s4",
+   "name": "Sponsor slot open",
+   "cat": "restorant",
+   "note": "",
+   "open": true
+  },
+  {
+   "id": "s5",
+   "name": "Sponsor slot open",
+   "cat": "sport",
+   "note": "",
+   "open": true
+  },
+  {
+   "id": "s6",
+   "name": "Sponsor slot open",
+   "cat": "tayer / garage",
+   "note": "",
+   "open": true
+  }
+ ],
+ "refstart": "2026-09-19",
+ "ads": [],
+ "adsettings": {
+  "house": false,
+  "pa": "Bo reklame aki",
+  "en": "Your ad here",
+  "link": "mailto:asccur@gmail.com"
+ }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "korsou-futbol-updater",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Pulls the Curacao football database (Genius Sports feed behind ffk.cw) and writes data.json.",
+  "scripts": { "update": "node run.js", "scrape": "node scrape.js", "build": "node build.js" },
+  "dependencies": { "linkedom": "^0.18.5", "sharp": "^0.33.5" }
+}
