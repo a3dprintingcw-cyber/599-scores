@@ -917,7 +917,7 @@ if(API){ try{ if(lsGet("kf.adm","")) lsSet("kf.adm",""); }catch(e){} }
 /* Publishing writes to the server, so every phone sees it on next open.
    Without a server it falls back to downloading a fresh copy of the app. */
 function publishContent(){
-  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings"];
+  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings","googleClientId"];
   var payload={};
   OWNED.forEach(function(k){ if(DATA[k]!==undefined) payload[k]=DATA[k] });
   return api("/admin/content",{method:"POST",body:payload,auth:true});
@@ -926,7 +926,7 @@ function publishContent(){
 /* Merge what the admin published over the file from GitHub. */
 function applyContent(c){
   if(!c) return false;
-  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings"];
+  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings","googleClientId"];
   var changed=false;
   OWNED.forEach(function(k){
     if(c[k]===undefined) return;
@@ -2052,7 +2052,15 @@ function fanBoard(){
                        :"Pick a name to join the ladder. Your predictions count from then on.")+'</p>'+
       '<div class="field"><label>'+esc(LANG==="pa"?"Bo nòmber":"Your name")+'</label>'+
         '<input id="fanname" maxlength="28" autocomplete="off"></div>'+
-      '<div class="btnrow"><button class="btn" data-act="fanjoin">'+esc(LANG==="pa"?"Drenta":"Join")+'</button></div></div>';
+      '<div class="btnrow"><button class="btn" data-act="fanjoin">'+esc(LANG==="pa"?"Drenta":"Join")+'</button></div>'+
+      (gClientId()
+        ? '<div style="display:flex;align-items:center;gap:10px;margin:14px 0 10px">'+
+            '<span style="flex:1;height:1px;background:var(--line)"></span>'+
+            '<span class="muted" style="font-size:11.5px">'+esc(LANG==="pa"?"òf":"or")+'</span>'+
+            '<span style="flex:1;height:1px;background:var(--line)"></span></div>'+
+          '<div id="gbtn"></div>'
+        : '')+
+      '</div>';
   }
 
   if(!rows.length){
@@ -2086,6 +2094,50 @@ function fanBoard(){
     esc(LANG==="pa"?"Eksakto = 3 punto · resultado korekto = 1 punto · nr 1, 2 i 3 ta gana premio na fin di temporada"
                    :"Exact score = 3 points · correct outcome = 1 point · 1st, 2nd and 3rd win a prize at the end of the season")+'</p>';
   return h;
+}
+
+/* Google sign in. The script only loads once a client id has been published, so
+   an app without one carries no third party code at all. The button is drawn
+   after each render because the view is rewritten wholesale. */
+var GSI = { asked:false, ready:false };
+function gClientId(){ return (DATA.googleClientId||"").trim() }
+function gLoad(){
+  if(GSI.asked || !gClientId() || !API) return;
+  GSI.asked = true;
+  var s = document.createElement("script");
+  s.src = "https://accounts.google.com/gsi/client";
+  s.async = true; s.defer = true;
+  s.onload = function(){
+    try{
+      window.google.accounts.id.initialize({
+        client_id: gClientId(),
+        callback: function(res){ gSignIn(res && res.credential) }
+      });
+      GSI.ready = true;
+      gPaint();
+    }catch(e){}
+  };
+  s.onerror = function(){ GSI.ready = false };
+  document.head.appendChild(s);
+}
+function gPaint(){
+  if(!GSI.ready) return;
+  var el = document.getElementById("gbtn");
+  if(!el || el.getAttribute("data-painted")) return;
+  try{
+    window.google.accounts.id.renderButton(el, {
+      theme: (document.documentElement.getAttribute("data-theme")==="light" ? "outline" : "filled_black"),
+      size: "large", shape: "pill", text: "signin_with", width: 260
+    });
+    el.setAttribute("data-painted","1");
+  }catch(e){}
+}
+function gSignIn(cred){
+  if(!cred) return;
+  api("/auth/google",{method:"POST",body:{credential:cred}}).then(function(j){
+    FANU={token:j.token,id:j.user.id,name:j.user.name};
+    lsSet("kf.fanacct",FANU); LB=null; pushPreds(); toast(T("welcome")); render();
+  }).catch(function(e){ toast(e.message) });
 }
 
 /* Predictions typed before joining are not lost: they go up when you join. */
@@ -2499,6 +2551,10 @@ function admSettings(){
     '<div class="field"><label>'+esc(LANG==="pa"?"Adrès di e servidó (live i arbiter)":"Server address (live scores and referees)")+'</label><input data-setting="api" value="'+esc(DATA.api||"")+'" placeholder="https://..."></div>'+
     '<p class="muted" style="font-size:12px;margin:-4px 0 10px">'+esc(LANG==="pa"?"Laga bashí si bo no ta usa e servidó. Sin esaki no tin resultado live ni konsola di arbiter.":"Leave empty if you are not running the server. Without it there are no live scores and no referee console.")+'</p>'+
     '<p class="muted" style="font-size:12px;margin:-4px 0 10px">'+esc(LANG==="pa"?"Partido promé ku e fecha aki no ta duna punto.":"Matches before this date award no points.")+'</p>'+
+    '<div class="field"><label>'+esc(LANG==="pa"?"Google client ID (drenta ku Google)":"Google client ID (sign in with Google)")+'</label>'+
+      '<input data-setting="googleClientId" value="'+esc(DATA.googleClientId||"")+'" placeholder="....apps.googleusercontent.com"></div>'+
+    '<p class="muted" style="font-size:12px;margin:-4px 0 10px">'+esc(LANG==="pa"?"Laga bashí pa kita e boton di Google. Sin esaki niun kódigo di Google no ta karga."
+                                                                                :"Leave empty to hide the Google button. Without it no Google code loads at all.")+'</p>'+
     '<div class="btnrow"><button class="btn sm" data-act="savesettings">'+esc(T("save"))+'</button></div></div>';
   h+='<div class="card" style="padding:14px;margin-top:12px"><div class="eyebrow">'+esc(T("sampleTitle"))+'</div>'+
     '<p class="muted" style="font-size:13px;margin:8px 0">'+samples+' '+esc(LANG==="pa"?"item di muestra (hungadó, partido, transfer, notisia). E klubnan ta keda.":"sample items (players, matches, transfers, news). Clubs are kept.")+'</p>'+
@@ -3265,6 +3321,7 @@ function render(){
   if(key!==lastKey){ lastKey=key; adPick={}; window.scrollTo(0,0) }
   if(document.querySelector(".daterail")){ centreDay(railReady); railReady=true }
   else railReady=false;
+  if(document.getElementById("gbtn")){ gLoad(); gPaint(); }
 }
 
 /* ───────── theme ───────── */
@@ -3715,7 +3772,13 @@ render();
 
 /* Pull the freshest FFK data if the updater has written one next to this file.
    Your own content (transfers, news, referee rewards) is never overwritten. */
-var MINE=["transfers","news","rewards","sponsors","refledger","refrules","refinfo"];
+/* Keys a fresh data.json must not wipe. The FFK file knows nothing about
+   adverts, reward rates or the server address, so whatever we already hold wins
+   when the incoming file has nothing to say about them. Without this an advert
+   disappears the moment the fixture file refreshes, and only comes back if the
+   /content fetch succeeds. */
+var MINE=["transfers","news","rewards","sponsors","refledger","refrules","refinfo",
+          "refstart","ads","adsettings","googleClientId","api"];
 function applyRemote(remote){
   if(!remote||!remote.clubs||!remote.divisions) return false;
   var have=lsGet("kf.data",null)||DATA;
