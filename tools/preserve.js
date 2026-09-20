@@ -65,6 +65,7 @@ const prevDiv = {};
 /* The app reads its server address from here too. Losing it would quietly turn
    off live scores, referee sign in and the fan ladder. */
 if (!now.api && prev.api) { now.api = prev.api; kept.push('api'); }
+if (!now.googleClientId && prev.googleClientId) { now.googleClientId = prev.googleClientId; kept.push('googleClientId'); }
 
 if (kept.length) {
   fs.writeFileSync(OUT, JSON.stringify(now));
