@@ -653,7 +653,11 @@ function viewUnlock(){
 }
 
 var TODAY="2026-09-19";
-function today(){ var n=new Date(); return n.toISOString().slice(0,10); }
+/* Curacao is UTC-4 all year, no daylight saving. The plain UTC date would tip
+   over to tomorrow at 20:00 local, in the middle of the evening kick offs, so
+   tonight's match would show up as yesterday's. */
+var TZ_OFFSET_MS = -4*3600*1000;
+function today(){ return new Date(Date.now()+TZ_OFFSET_MS).toISOString().slice(0,10); }
 function idx(arr){var o={};(arr||[]).forEach(function(x){o[x.id]=x});return o}
 var C={},P={},DV={};
 function reindex(){ C=idx(DATA.clubs); P=idx(DATA.players); DV=idx(DATA.divisions); }
@@ -753,6 +757,8 @@ function refReload(){ BOARD=null; MYPTS=null; REWARDS=null; MYRED=null; }
 var API = (DATA.api || "").replace(/\/+$/, "");
 var LIVE = { at: 0, byId: {} };
 var REF = lsGet("kf.ref", null);          /* {token,id,name} */
+var FANU = lsGet("kf.fanacct", null);     /* {token,id,name} a fan's place on the ladder */
+var LB = null;                            /* leaderboard, fetched once per render cycle */
 var RQ  = lsGet("kf.refq", []);           /* actions taken with no signal */
 var liveTimer = null;
 
@@ -762,13 +768,25 @@ function api(path, opts){
   var h = opts.headers || {};
   h["content-type"] = "application/json";
   if(opts.auth && REF && REF.token) h["authorization"] = "Bearer " + REF.token;
+  else if(opts.fan && FANU && FANU.token) h["authorization"] = "Bearer " + FANU.token;
   return fetch(API + path, {
     method: opts.method || "GET",
     headers: h,
     body: opts.body ? JSON.stringify(opts.body) : undefined
   }).then(function(r){
     return r.json().catch(function(){ return {} }).then(function(j){
-      if(!r.ok) throw Object.assign(new Error(j.error || ("http " + r.status)), { status: r.status, data: j });
+      if(!r.ok){
+        /* The server has stopped recognising this sign in. Showing an Editor that
+           cannot save is worse than saying so, so drop the session and say it. */
+        if(opts.auth && (r.status===401 || r.status===403)){
+          REF=null; lsSet("kf.ref",null); refMatches=null; refReload(); ADMREFS=null;
+          try{ toast(LANG==="pa"?"Bo seshon a kaba. Drenta di nobo.":"Your session has ended. Sign in again."); render(); }catch(e){}
+        }
+        if(opts.fan && r.status===401){
+          FANU=null; lsSet("kf.fanacct",null); LB=null;
+        }
+        throw Object.assign(new Error(j.error || ("http " + r.status)), { status: r.status, data: j });
+      }
       return j;
     });
   });
@@ -777,11 +795,17 @@ function api(path, opts){
 /* Matches that could plausibly be in progress, so we only poll when it matters. */
 function liveWindow(){
   var t = today(), n = Date.now();
+  /* Anything the referee has actually opened counts as live, however late it
+     runs and whatever the federation feed still says. */
+  for(var k in LIVE.byId){
+    var x = LIVE.byId[k];
+    if(x && (x.status === "live" || x.status === "ht")) return true;
+  }
   return DATA.matches.some(function(m){
     if(m.date !== t) return false;
-    if(m.status === "live") return true;
-    var ko = new Date(m.date + "T" + (m.time || "00:00") + ":00").getTime();
-    return n > ko - 15*60000 && n < ko + 3*3600000;
+    if(m.status === "live" || m.status === "ht") return true;
+    var ko = new Date(m.date + "T" + (m.time || "00:00") + ":00-04:00").getTime();
+    return n > ko - 20*60000 && n < ko + 4*3600000;
   });
 }
 
@@ -810,21 +834,25 @@ function applyLive(feed){
 }
 
 function pollLive(){
-  if(!API) return;
-  api("/live?t=" + Date.now()).then(function(f){
+  if(!API) return Promise.resolve();
+  return api("/live?t=" + Date.now()).then(function(f){
     if(applyLive(f)) render();
   }).catch(function(){});
 }
 
+/* The cadence is decided after every poll, not once when the app opened. A goal
+   tapped by the referee has to reach a phone in seconds, so as soon as a match is
+   running we are on the short interval, even if the app was opened hours before. */
 function liveLoop(){
-  if(liveTimer) clearInterval(liveTimer);
+  if(liveTimer) clearTimeout(liveTimer);
   if(!API) return;
-  var fast = liveWindow();
-  pollLive();
-  liveTimer = setInterval(function(){
-    if(document.hidden) return;
-    if(liveWindow()) pollLive();
-  }, fast ? 20000 : 180000);
+  (function tick(){
+    var run = document.hidden ? Promise.resolve() : pollLive();
+    run.then(function(){
+      if(liveTimer) clearTimeout(liveTimer);
+      liveTimer = setTimeout(tick, liveWindow() ? 12000 : 120000);
+    });
+  })();
 }
 document.addEventListener("visibilitychange", function(){ if(!document.hidden) pollLive() });
 
@@ -1704,7 +1732,8 @@ function viewRef(){
   }
   if(!refMatches.length) return h + '<div class="card"><div class="empty"><h3>'+
     esc(LANG==="pa"?"Bo no tin partido awe":"No match for you today")+'</h3><p>'+
-    esc(LANG==="pa"?"E asignashon ta bini for di FFK. Si bo ta fluit awe i bo no ta mira e partido aki, papia ku e admin.":"Appointments come from the FFK. If you are officiating today and do not see it, speak to the admin.")+'</p></div></div>';
+    esc(LANG==="pa"?"E asignashon ta bini for di FFK. Si bo ta fluit awe i bo no ta mira e partido aki, papia ku e admin.":"Appointments come from the FFK. If you are officiating today and do not see it, speak to the admin.")+'</p></div></div>'
+    + rewardsPanel();
 
   var m = refMatches.filter(function(x){ return x.id === refOpen })[0] || (refMatches.length === 1 ? refMatches[0] : null);
   if(!m){
@@ -1831,7 +1860,7 @@ function rewardsPanel(){
   if(REWARDS==="loading") return '';
   var bal=(MYPTS && MYPTS.me) ? MYPTS.me.balance : 0;
   var h='<div class="sechead"><h2>'+esc(T("rewards"))+'</h2><span class="sub">'+bal+' '+esc(T("points").toLowerCase())+'</span></div>';
-  h+='<div class="rwdgrid">'+(REWARDS||[]).slice().sort(function(a,b){return a.cost-b.cost}).map(function(w){
+  h+='<div class="rwdgrid">'+(Array.isArray(REWARDS)?REWARDS:[]).slice().sort(function(a,b){return a.cost-b.cost}).map(function(w){
     var can = bal>=w.cost && w.left>0;
     return '<div class="rwd"><div class="rtop"><b>'+esc(LANG==="pa"?w.title_pa:w.title_en)+'</b><span class="cost">'+w.cost+'</span></div>'+
       (w.value?'<span class="pill gold">'+esc(w.value)+'</span>':'')+
@@ -1840,10 +1869,10 @@ function rewardsPanel(){
       '<button class="btn sm'+(can?'':' ghost')+'" data-act="redeem" data-w="'+esc(w.id)+'"'+(can?'':' disabled')+'>'+
         esc(can?(LANG==="pa"?"Kambia":"Redeem"):(w.left>0?(LANG==="pa"?"Falta "+(w.cost-bal):(w.cost-bal)+" more"):(LANG==="pa"?"Kabá":"Gone")))+'</button></div>';
   }).join("")+'</div>';
-  if(MYRED && MYRED.length){
+  if(Array.isArray(MYRED) && MYRED.length){
     h+='<div class="sechead"><h2 style="font-size:15px">'+esc(LANG==="pa"?"Bo vouchernan":"Your vouchers")+'</h2></div><div class="card">'+
       MYRED.map(function(x){
-        var w=(REWARDS||[]).filter(function(y){return y.id===x.reward_id})[0]||{};
+        var w=(Array.isArray(REWARDS)?REWARDS:[]).filter(function(y){return y.id===x.reward_id})[0]||{};
         return '<div class="lb"><span class="who"><b>'+esc(LANG==="pa"?(w.title_pa||x.reward_id):(w.title_en||x.reward_id))+'</b>'+
           '<small style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(x.code)+'</small></span>'+
           '<span class="pill'+(x.status==="collected"?' ft':'')+'">'+esc(x.status)+'</span></div>';
@@ -1858,7 +1887,8 @@ function refLogin(){
     '<p class="muted" style="font-size:13px;margin:0 0 12px">'+
       esc(LANG==="pa"?"Promé biaha? Usa e kódigo ku FFK a duna bo i skohe un PIN.":"First time? Use the code the FFK gave you and choose a PIN.")+'</p>'+
     '<div class="field"><label>'+esc(LANG==="pa"?"Kódigo di invitashon òf bo ID":"Invite code or your ID")+'</label><input id="refid" autocomplete="off"></div>'+
-    '<div class="field"><label>PIN</label><input id="refpin" type="password" inputmode="numeric" autocomplete="off"></div>'+
+    '<div class="field"><label>PIN</label><input id="refpin" type="password" inputmode="numeric" autocomplete="off">'+
+      '<span class="muted" style="font-size:11.5px">'+esc(LANG==="pa"?"4 te 8 number, sin letter":"4 to 8 digits, no letters")+'</span></div>'+
     '<div class="btnrow"><button class="btn" data-act="reflogin">'+esc(LANG==="pa"?"Drenta":"Sign in")+'</button>'+
     '<button class="btn ghost" data-go="arbiter">'+esc(LANG==="pa"?"Bai bèk":"Back")+'</button></div></div>';
 }
@@ -1987,14 +2017,96 @@ function viewPlayer(){
   return h;
 }
 
+/* The fan ladder. 3 points for the exact score, 1 for the right outcome.
+   The table is public: you can read it without an account. You only need a name
+   to appear on it. */
+function fanBoard(){
+  if(!API) return '';
+  if(LB===null){
+    LB="loading";
+    api("/leaderboard?limit=25",{fan:true}).then(function(j){ LB=j||{rows:[]}; render() })
+      .catch(function(){ LB={rows:[],me:null}; render() });
+    return '';
+  }
+  if(LB==="loading") return '';
+  var rows = (LB && Array.isArray(LB.rows)) ? LB.rows : [];
+  var me = LB && LB.me;
+  var h='<div class="sechead"><h2 style="font-size:15px">'+esc(LANG==="pa"?"Klasifikashon di fan":"Fan leaderboard")+'</h2>'+
+        '<span class="sub">'+esc(LANG==="pa"?"Temporada":"Season")+' '+esc(DATA.season||"")+'</span>'+
+        (FANU?'<button class="more" data-act="fanout">'+esc(LANG==="pa"?"Sali":"Sign out")+'</button>':'')+'</div>';
+
+  if(!FANU){
+    h+='<div class="card" style="padding:16px">'+
+      '<p class="muted" style="margin:0 0 10px;font-size:13px">'+
+        esc(LANG==="pa"?"Skohe un nòmber pa drenta e klasifikashon. Bo pronóstiko ta konta for di e momento ei."
+                       :"Pick a name to join the ladder. Your predictions count from then on.")+'</p>'+
+      '<div class="field"><label>'+esc(LANG==="pa"?"Bo nòmber":"Your name")+'</label>'+
+        '<input id="fanname" maxlength="28" autocomplete="off"></div>'+
+      '<div class="btnrow"><button class="btn" data-act="fanjoin">'+esc(LANG==="pa"?"Drenta":"Join")+'</button></div></div>';
+  }
+
+  if(!rows.length){
+    h+='<div class="card"><div class="empty" style="padding:20px"><h3>'+
+      esc(LANG==="pa"?"E tabel ta bashí ainda":"The table is still empty")+'</h3><p>'+
+      esc(LANG==="pa"?"Ora e promé partido kaba, e punto ta drenta aki mesora."
+                     :"As soon as the first match is finished, the points land here.")+'</p></div></div>';
+  } else {
+    h+='<div class="card">'+rows.map(function(r,i){
+      var rank=i+1, mine=!!(FANU && r.name===FANU.name);
+      return '<div class="lb"'+(mine?' style="background:var(--accent-soft)"':'')+'>'+
+        '<span class="rk'+(rank<=3?' top':'')+'">'+rank+'</span>'+
+        '<span class="who"><b>'+esc(r.name)+(mine?' <span class="pill acc">'+esc(LANG==="pa"?"bo":"you")+'</span>':'')+'</b>'+
+          '<small>'+(r.exact||0)+' '+esc(LANG==="pa"?"eksakto":"exact")+' · '+(r.played||0)+' '+esc(LANG==="pa"?"partido":"played")+'</small></span>'+
+        '<span class="big">'+(r.pts||0)+'</span></div>';
+    }).join("")+'</div>';
+  }
+
+  /* Always show the signed in fan their own line, even on nought, so joining
+     visibly does something before the first result lands. */
+  var inTop = FANU && rows.some(function(r){ return r.name===FANU.name });
+  if(FANU && !inTop){
+    var mr = me || {pts:0,exact:0,played:0,rank:null,name:FANU.name};
+    h+='<div class="card" style="margin-top:8px"><div class="lb" style="background:var(--accent-soft)">'+
+      '<span class="rk">'+(mr.rank||"–")+'</span>'+
+      '<span class="who"><b>'+esc(mr.name||FANU.name)+' <span class="pill acc">'+esc(LANG==="pa"?"bo":"you")+'</span></b>'+
+      '<small>'+(mr.exact||0)+' '+esc(LANG==="pa"?"eksakto":"exact")+' · '+(mr.played||0)+' '+esc(LANG==="pa"?"partido":"played")+'</small></span>'+
+      '<span class="big">'+(mr.pts||0)+'</span></div></div>';
+  }
+  h+='<p class="muted" style="font-size:11.5px;margin:8px 2px">'+
+    esc(LANG==="pa"?"Eksakto = 3 punto · resultado korekto = 1 punto · nr 1, 2 i 3 ta gana premio na fin di temporada"
+                   :"Exact score = 3 points · correct outcome = 1 point · 1st, 2nd and 3rd win a prize at the end of the season")+'</p>';
+  return h;
+}
+
+/* Predictions typed before joining are not lost: they go up when you join. */
+function pushPreds(){
+  if(!API || !FANU) return;
+  var p = FAN.preds || {};
+  Object.keys(p).forEach(function(mid){
+    var v = p[mid];
+    if(!v || v.h==="" || v.a==="") return;
+    api("/predictions",{method:"POST",fan:true,body:{matchId:mid,home:+v.h,away:+v.a}}).catch(function(){});
+  });
+}
+
 function viewFan(){
   var t=today();
   var sc=predScore();
-  var open=DATA.matches.filter(function(m){return m.status==="sched"&&m.date>=t}).sort(function(a,b){return a.date.localeCompare(b.date)}).slice(0,8);
+  /* Predictions close at kick off. The server refuses a late one, so the app must
+     not pretend otherwise: once the whistle has gone the boxes lock. */
+  var nowMs=Date.now();
+  function koMs(m){ return new Date(m.date+"T"+(m.time||"00:00")+":00-04:00").getTime() }
+  var open=DATA.matches.filter(function(m){
+      return m.status==="sched" && m.date>=t && koMs(m)>nowMs;
+    }).sort(function(a,b){return a.date.localeCompare(b.date)}).slice(0,8);
+  var locked=DATA.matches.filter(function(m){
+      return m.date===t && koMs(m)<=nowMs && m.status!=="ft" && (FAN.preds||{})[m.id];
+    }).sort(function(a,b){return a.date.localeCompare(b.date)});
   var done=Object.keys(FAN.preds||{}).map(function(id){return DATA.matches.filter(function(m){return m.id===id})[0]})
     .filter(function(m){return m&&m.status==="ft"}).sort(function(a,b){return b.date.localeCompare(a.date)});
   var h='<div class="sechead"><h2>'+esc(T("fan"))+'</h2><span class="sub">'+esc(T("fanIntro"))+'</span></div>';
   h+=myHero();
+  h+=fanBoard();
   h+='<div class="sechead"><h2 style="font-size:15px">'+esc(T("favourites"))+'</h2>'+
      '<button class="more" data-act="openpicker">'+esc(T("followMore"))+'</button></div>';
   h+='<div class="card">'+(FAN.clubs.length?FAN.clubs.map(function(id){
@@ -2034,6 +2146,17 @@ function viewFan(){
           '<span class="muted">–</span>'+
           '<input class="predin" data-pm="'+m.id+'" data-side="a" type="number" min="0" max="20" value="'+esc(p.a)+'" style="width:44px;text-align:center;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface)">'+
         '</span></div>';
+    }).join("")+'</div>';
+  }
+  if(locked.length){
+    h+='<div class="card" style="margin-top:8px">'+locked.map(function(m){
+      var p=(FAN.preds||{})[m.id]||{h:"",a:""};
+      return '<div class="mrow" style="cursor:default;opacity:.7">'+
+        '<span class="when">'+esc(fmtDate(m.date,true))+'<br>'+esc(m.time||"")+'</span>'+
+        '<span class="teams"><span class="mteam">'+crest(m.home)+'<span class="nm">'+esc(club(m.home).short)+'</span></span>'+
+        '<span class="mteam">'+crest(m.away)+'<span class="nm">'+esc(club(m.away).short)+'</span></span></span>'+
+        '<span class="stat"><span class="pill">'+esc(LANG==="pa"?"será":"locked")+'</span>'+
+        '<span class="sml">'+esc(p.h)+'–'+esc(p.a)+'</span></span></div>';
     }).join("")+'</div>';
   }
   if(done.length){
@@ -2159,7 +2282,8 @@ function openForm(title,fields,values,onSave,onDelete){
     } else {
       input='<input data-fk="'+f.k+'" type="'+(f.type||"text")+'" value="'+esc(v)+'"'+(f.type==="number"?' step="any"':'')+'>';
     }
-    return '<div class="field"><label>'+esc(f.label)+'</label>'+input+'</div>';
+    return '<div class="field"><label>'+esc(f.label)+'</label>'+input+
+      (f.hint && f.type!=="check" ? '<span class="muted" style="font-size:11.5px">'+esc(f.hint)+'</span>' : '')+'</div>';
   }).join("");
   var foot='<button class="btn" data-act="formsave">'+esc(T("save"))+'</button><button class="btn ghost" data-act="closemodal">'+esc(T("cancel"))+'</button>'+
     (onDelete?'<button class="btn danger" data-act="formdel" style="margin-left:auto">'+esc(T("del"))+'</button>':'');
@@ -2280,7 +2404,11 @@ function viewAdmin(){
   h+='<div class="card" style="margin:12px 0;padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
     '<button class="btn" data-act="publish"'+(dirty?'':' disabled')+'>'+esc(T("publish"))+'</button>'+
     '<button class="btn ghost sm" data-act="lock" style="margin-left:auto">'+esc(T("lock"))+'</button>'+
-    '<span class="muted" style="font-size:12px">'+esc(LANG==="pa"?"Bo kambio ta keda riba e telefon aki. Baha index.html i pone e riba bo hosting pa tur hende mira e.":"Your changes stay on this phone. Download index.html and put it on your hosting for everyone else to see.")+'</span></div>';
+    '<span class="muted" style="font-size:12px">'+esc(API
+      ? (LANG==="pa"?"Publiká ta manda bo kambio pa e server. Tur telefon ta hañ'e ora nan habri e app."
+                    :"Publish sends your changes to the server. Every phone picks them up on next open.")
+      : (LANG==="pa"?"Bo kambio ta keda riba e telefon aki. Baha index.html i pone e riba bo hosting pa tur hende mira e."
+                    :"Your changes stay on this phone. Download index.html and put it on your hosting for everyone else to see."))+'</span></div>';
   if(tab==="matches") h+=admMatches();
   else if(tab==="clubs") h+=admClubs();
   else if(tab==="players") h+=admPlayers();
@@ -2378,7 +2506,45 @@ function admSettings(){
   return h;
 }
 
+var ADMREFS=null;
+/* The Editor must act on the real accounts in the database, not on the copy of
+   the referee list that rides along in the published content. Creating a referee
+   here issues the invite code they sign in with, and an award here lands in the
+   ledger the points are actually calculated from. */
+function admRefsPanel(){
+  if(ADMREFS===null){
+    ADMREFS="loading";
+    api("/admin/referees",{auth:true}).then(function(j){ ADMREFS=j.referees||[]; render() })
+      .catch(function(){ ADMREFS=[]; render() });
+    return '';
+  }
+  if(ADMREFS==="loading") return '';
+  var rows=Array.isArray(ADMREFS)?ADMREFS:[];
+  var h='<div class="btnrow" style="margin:10px 0">'+
+    '<button class="btn sm" data-act="srvnewref">+ '+esc(LANG==="pa"?"Arbiter":"Referee")+'</button>'+
+    '<button class="btn ghost sm" data-act="srvaward">+ '+esc(T("awardPts"))+'</button></div>';
+  h+='<div class="sechead"><h2 style="font-size:15px">'+esc(LANG==="pa"?"Kuenta di arbiter":"Referee accounts")+'</h2>'+
+     '<span class="sub">'+rows.length+'</span></div>';
+  if(!rows.length) return h+'<div class="card"><div class="empty" style="padding:18px"><h3>'+
+    esc(LANG==="pa"?"Ningun kuenta ainda":"No accounts yet")+'</h3><p>'+
+    esc(LANG==="pa"?"Traha un kuenta i duna e arbiter su kódigo.":"Create one and give the referee the code it hands back.")+'</p></div></div>';
+  h+='<div class="card">'+rows.map(function(r){
+    return '<div class="lb"><span class="refav'+(r.role==="admin"?" w":"")+'">'+esc(initials(r.name))+'</span>'+
+      '<span class="who"><b>'+esc(r.name)+(r.active?'':' <span class="pill">off</span>')+
+        (r.role==="admin"?' <span class="pill acc">admin</span>':'')+'</b>'+
+        '<small>'+esc(r.ffk_name||"")+' · '+
+        (r.claimed
+          ? esc(LANG==="pa"?"a drenta":"signed in")
+          : '<span style="font-family:ui-monospace,monospace">'+esc(r.invite||"—")+'</span>')+
+        '</small></span>'+
+      '<button class="btn ghost sm" data-act="srvreset" data-r="'+esc(r.id)+'">'+
+        esc(LANG==="pa"?"Kódigo nobo":"New code")+'</button></div>';
+  }).join("")+'</div>';
+  return h;
+}
+
 function admArbiter(){
+  if(API && serverAdmin()) return admRefsPanel();
   var st=refStats();
   var h='<div class="btnrow" style="margin:10px 0"><button class="btn sm" data-act="newref">+ '+esc(T("arbiter"))+'</button>'+
     '<button class="btn ghost sm" data-act="newledger">+ '+esc(T("awardPts"))+'</button></div>';
@@ -3166,6 +3332,68 @@ document.addEventListener("click",function(ev){
       if(nv.length<4){ toast(T("codeShort")); break }
       DATA.adminpin=admHash(nv); lsSet("kf.adm",DATA.adminpin); mark(); toast(T("codeSaved")); render(); break;
     }
+    case "srvnewref": {
+      openForm(LANG==="pa"?"Arbiter nobo":"New referee",[
+        {k:"name",label:LANG==="pa"?"Nòmber":"Name"},
+        {k:"ffkName",label:LANG==="pa"?"Nòmber manera FFK ta skirbi'l":"Name exactly as FFK spells it",
+         hint:LANG==="pa"?"Mester ta identiko na e formulario di FFK":"Must match the FFK match sheet exactly"},
+        {k:"area",label:LANG==="pa"?"Bario":"District"},
+        {k:"role",label:"Role",type:"select",options:[["ref",LANG==="pa"?"Arbiter":"Referee"],["admin","Admin"]]}
+      ],{name:"",ffkName:"",area:"",role:"ref"},function(v){
+        if(!v.name){ toast(LANG==="pa"?"Falta nòmber":"Name required"); return }
+        api("/admin/referees",{method:"POST",auth:true,body:v}).then(function(j){
+          ADMREFS=null; BOARD=null;
+          openModal(LANG==="pa"?"Kódigo di "+v.name:"Code for "+v.name,
+            '<p>'+esc(LANG==="pa"?"Duna e arbiter aki e kódigo aki. E ta sirbi un biaha so."
+                                 :"Give the referee this code. It works once.")+'</p>'+
+            '<div class="card" style="padding:16px;text-align:center;font-family:ui-monospace,monospace;font-size:24px;letter-spacing:2px">'+
+              esc(j.invite)+'</div>');
+          render();
+        }).catch(function(e){ toast(e.message) });
+      },null);
+      break;
+    }
+    case "srvreset": {
+      var rid=a.getAttribute("data-r");
+      api("/admin/referees/reset",{method:"POST",auth:true,body:{id:rid}}).then(function(j){
+        ADMREFS=null;
+        openModal(LANG==="pa"?"Kódigo nobo":"New code",
+          '<p>'+esc(LANG==="pa"?"Su kódigo bieu i su PIN a kaba di ser borá."
+                               :"Their old code and PIN have just been cleared.")+'</p>'+
+          '<div class="card" style="padding:16px;text-align:center;font-family:ui-monospace,monospace;font-size:24px;letter-spacing:2px">'+
+            esc(j.invite)+'</div>');
+        render();
+      }).catch(function(e){ toast(e.message) });
+      break;
+    }
+    case "srvaward": {
+      var opts=(Array.isArray(ADMREFS)?ADMREFS:[]).map(function(r){return [r.id,r.name]});
+      if(!opts.length){ toast(LANG==="pa"?"Traha un kuenta promé":"Create an account first"); break }
+      openForm(T("awardPts"),[
+        {k:"refId",label:LANG==="pa"?"Arbiter":"Referee",type:"select",options:opts},
+        {k:"points",label:T("points")+" (+/-)",type:"number"},
+        {k:"reason",label:LANG==="pa"?"Motibu":"Reason"}
+      ],{refId:opts[0][0],points:40,reason:""},function(v){
+        api("/admin/award",{method:"POST",auth:true,body:v}).then(function(){
+          ADMREFS=null; BOARD=null; MYPTS=null; toast(T("saved")); render();
+        }).catch(function(e){ toast(e.message) });
+      },null);
+      break;
+    }
+    case "fanjoin": {
+      var fne=$("#fanname"); if(!fne) break;
+      var fnm=fne.value.trim();
+      if(fnm.length<2){ toast(LANG==="pa"?"Skohe un nòmber":"Pick a name"); break }
+      api("/auth/fan",{method:"POST",body:{name:fnm}}).then(function(j){
+        FANU={token:j.token,id:j.user.id,name:j.user.name};
+        lsSet("kf.fanacct",FANU); LB=null; pushPreds(); toast(T("welcome")); render();
+      }).catch(function(e){ toast(e.message) });
+      break;
+    }
+    case "fanout":
+      api("/auth/logout",{method:"POST",fan:true}).catch(function(){});
+      FANU=null; lsSet("kf.fanacct",null); LB=null; render();
+      break;
     case "reflogin": {
       var idEl=$("#refid"), pinEl=$("#refpin");
       if(!idEl||!pinEl) break;
@@ -3423,6 +3651,11 @@ document.addEventListener("change",function(ev){
     var mid=t.getAttribute("data-pm"), side=t.getAttribute("data-side");
     FAN.preds=FAN.preds||{}; FAN.preds[mid]=FAN.preds[mid]||{h:"",a:""};
     FAN.preds[mid][side]=t.value; saveFan();
+    var pv=FAN.preds[mid];
+    if(FANU && pv.h!=="" && pv.a!==""){
+      api("/predictions",{method:"POST",fan:true,body:{matchId:mid,home:+pv.h,away:+pv.a}})
+        .catch(function(){});
+    }
   }
 });
 $("#themebtn").addEventListener("click",function(){
