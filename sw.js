@@ -1,5 +1,5 @@
 /* 599 Scores — offline cache. App shell only, never the API. */
-const CACHE = '599-scores-v4';
+const CACHE = '599-scores-v5';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './data.json',
   './icon-48.png','./icon-72.png','./icon-96.png','./icon-144.png','./icon-180.png',
@@ -35,11 +35,14 @@ self.addEventListener('fetch', e => {
   }
   const isPage = req.mode === 'navigate' || (req.destination === 'document');
   if (isPage) {
-    /* Always revalidate the page against the network. Plain fetch() may be
-       answered from the browser's own HTTP cache, which left phones running a
-       build that had already been replaced on the server. */
+    /* Always revalidate the page against the network, or a phone keeps running
+       a build that was replaced on the server hours ago.
+       Note: fetch(req, {...}) is illegal for a navigation request, it throws
+       "Cannot construct a Request with a Request whose mode is navigate", which
+       would send every page load into the cache fallback below. Fetch the URL
+       as a fresh request instead. */
     e.respondWith(
-      fetch(req, { cache: 'reload' }).then(r => {
+      fetch(req.url, { cache: 'reload', credentials: 'same-origin' }).then(r => {
         const copy = r.clone();
         caches.open(CACHE).then(c => c.put('./index.html', copy));
         return r;
