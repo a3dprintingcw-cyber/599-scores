@@ -48,6 +48,20 @@ Object.keys(prev.tables || {}).forEach(id => {
   }
 });
 
+/* A restored table is useless on its own. The app lists a competition's phases
+   from divisions[].groups, and build.js only fills that in while it is reading
+   standings it actually scraped. Put the phase list back alongside the table,
+   or the standings screen has data it cannot show. */
+const prevDiv = {};
+(prev.divisions || []).forEach(x => { prevDiv[x.id] = x; });
+(now.divisions || []).forEach(x => {
+  const had = prevDiv[x.id];
+  if (had && (had.groups || []).length && !(x.groups || []).length) {
+    x.groups = had.groups;
+    kept.push('groups/' + x.id);
+  }
+});
+
 /* The app reads its server address from here too. Losing it would quietly turn
    off live scores, referee sign in and the fan ladder. */
 if (!now.api && prev.api) { now.api = prev.api; kept.push('api'); }
