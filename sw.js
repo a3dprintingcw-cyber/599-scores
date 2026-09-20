@@ -1,5 +1,5 @@
 /* 599 Scores — offline cache. App shell only, never the API. */
-const CACHE = '599-scores-v3';
+const CACHE = '599-scores-v4';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './data.json',
   './icon-48.png','./icon-72.png','./icon-96.png','./icon-144.png','./icon-180.png',
@@ -35,8 +35,11 @@ self.addEventListener('fetch', e => {
   }
   const isPage = req.mode === 'navigate' || (req.destination === 'document');
   if (isPage) {
+    /* Always revalidate the page against the network. Plain fetch() may be
+       answered from the browser's own HTTP cache, which left phones running a
+       build that had already been replaced on the server. */
     e.respondWith(
-      fetch(req).then(r => {
+      fetch(req, { cache: 'reload' }).then(r => {
         const copy = r.clone();
         caches.open(CACHE).then(c => c.put('./index.html', copy));
         return r;
