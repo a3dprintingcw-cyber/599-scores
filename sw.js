@@ -1,5 +1,5 @@
-/* Kòrsou Futbòl — offline cache */
-const CACHE = 'korsou-futbol-v1';
+/* 599 Scores — offline cache. App shell only, never the API. */
+const CACHE = '599-scores-v2';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './data.json',
   './icon-48.png','./icon-72.png','./icon-96.png','./icon-144.png','./icon-180.png',
@@ -22,6 +22,9 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  /* Never touch anything that is not this app. The live API in particular must
+     always hit the network, or a cached empty response freezes the scores. */
+  if (url.origin !== self.location.origin) return;
   /* Always try the network for the data file so new results arrive, cache as a fallback. */
   if (url.pathname.endsWith('/data.json')) {
     e.respondWith(
