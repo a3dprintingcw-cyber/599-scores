@@ -882,6 +882,9 @@ function isAdmin(){
   if(API) return serverAdmin();
   return lsGet("kf.adm","")===admPinHash();
 }
+/* Once a server is configured, a code typed into an older build must not keep
+   anyone in. Drop it, so the only way to the Editor is an admin account. */
+if(API){ try{ if(lsGet("kf.adm","")) lsSet("kf.adm",""); }catch(e){} }
 
 /* Publishing writes to the server, so every phone sees it on next open.
    Without a server it falls back to downloading a fresh copy of the app. */

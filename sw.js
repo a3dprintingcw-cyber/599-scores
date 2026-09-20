@@ -1,5 +1,5 @@
 /* 599 Scores — offline cache. App shell only, never the API. */
-const CACHE = '599-scores-v2';
+const CACHE = '599-scores-v3';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './data.json',
   './icon-48.png','./icon-72.png','./icon-96.png','./icon-144.png','./icon-180.png',
