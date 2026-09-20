@@ -1126,7 +1126,12 @@ function statsFor(divId){
   var ga={};
   Object.keys(g).forEach(function(k){ga[k]=(ga[k]||0)+g[k]});
   Object.keys(a).forEach(function(k){ga[k]=(ga[k]||0)+a[k]});
-  return {goals:list(g),assists:list(a),ga:list(ga),yc:list(yc),rc:list(rc),rawG:g,rawA:a};
+  /* Same shape as the stored branch above, every key present. Returning a
+     narrower object here made viewStats throw on st.clean.length for any
+     competition the FFK has not published leader tables for, which took the
+     whole render down with it. */
+  return {stored:false,goals:list(g),assists:list(a),ga:list(ga),
+          clean:[],mins:[],yc:list(yc),rc:list(rc),rawG:g,rawA:a};
 }
 function cleanSheetList(divId){
   var L=DATA.leaders&&DATA.leaders[divId];
@@ -1585,7 +1590,7 @@ function viewStats(){
   var st=statsFor(R.div), d=divOf(R.div);
   var h=divTabs(false)+'<div style="height:4px"></div>';
   h+='<div class="sechead" style="margin:10px 0"><h2 style="font-size:16px">'+esc(d.name)+'</h2><span class="sub">'+esc(d.season)+'</span></div>';
-  if(!st.goals.length&&!st.clean.length&&!st.yc.length){
+  if(!(st.goals||[]).length&&!(st.clean||[]).length&&!(st.yc||[]).length){
     var withStats=DATA.divisions.filter(function(x){
       var L=DATA.leaders&&DATA.leaders[x.id]; return L&&L.goals&&L.goals.length;
     });
@@ -2022,13 +2027,18 @@ function viewPlayer(){
    to appear on it. */
 function fanBoard(){
   if(!API) return '';
+  var head='<div class="sechead"><h2 style="font-size:15px">'+
+    esc(LANG==="pa"?"Klasifikashon di fan":"Fan leaderboard")+'</h2></div>';
   if(LB===null){
     LB="loading";
     api("/leaderboard?limit=25",{fan:true}).then(function(j){ LB=j||{rows:[]}; render() })
       .catch(function(){ LB={rows:[],me:null}; render() });
-    return '';
+    /* Show the section straight away rather than popping it in a moment later. */
+    return head+'<div class="card"><div class="empty" style="padding:18px"><p class="muted">'+
+      esc(LANG==="pa"?"Ta karga...":"Loading...")+'</p></div></div>';
   }
-  if(LB==="loading") return '';
+  if(LB==="loading") return head+'<div class="card"><div class="empty" style="padding:18px"><p class="muted">'+
+    esc(LANG==="pa"?"Ta karga...":"Loading...")+'</p></div></div>';
   var rows = (LB && Array.isArray(LB.rows)) ? LB.rows : [];
   var me = LB && LB.me;
   var h='<div class="sechead"><h2 style="font-size:15px">'+esc(LANG==="pa"?"Klasifikashon di fan":"Fan leaderboard")+'</h2>'+
