@@ -883,7 +883,7 @@ if(lsGet("kf.notif",null)===null && typeof Notification!=="undefined" && Notific
 
 function notifSupported(){ return typeof Notification !== "undefined" }
 function notifState(){ return notifSupported() ? Notification.permission : "unsupported" }
-function notifSave(){ lsSet("kf.notif", NOTIF) }
+function notifSave(){ lsSet("kf.notif", NOTIF); pushSync(); prefsPush() }
 
 function notifAsk(){
   if(!notifSupported()){ toast(LANG==="pa"?"E telefon aki no ta permití notifikashon":"This phone cannot show notifications"); return }
@@ -892,9 +892,64 @@ function notifAsk(){
       NOTIF.on = perm === "granted"; notifSave();
       toast(NOTIF.on ? (LANG==="pa"?"Notifikashon ta sendí":"Notifications are on")
                      : (LANG==="pa"?"Notifikashon ta blokiá":"Notifications are blocked"));
+      pushSync();
       render();
     }).catch(function(){});
   }catch(e){}
+}
+
+/* ---- push, so a goal reaches a phone with the app shut ----
+   The app asks the server for the public key, subscribes through the service
+   worker, and sends the subscription up with what this person follows. If any
+   of that is missing the app still works: notifications then only arrive while
+   it is open, which is what it did before. */
+var PUSHKEY=null, pushBusy=false;
+function pushable(){
+  return notifSupported() && "serviceWorker" in navigator && "PushManager" in window && !!API;
+}
+function pushKeyLoad(){
+  if(!pushable() || PUSHKEY!==null) return Promise.resolve(PUSHKEY);
+  PUSHKEY="";
+  return api("/push/key").then(function(j){ PUSHKEY=(j&&j.key)||""; return PUSHKEY })
+    .catch(function(){ PUSHKEY=""; return "" });
+}
+function urlB64(s){
+  var pad="=".repeat((4-s.length%4)%4);
+  var raw=atob((s+pad).replace(/-/g,"+").replace(/_/g,"/"));
+  var out=new Uint8Array(raw.length);
+  for(var i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i);
+  return out;
+}
+function subBody(sub){
+  var j=sub.toJSON?sub.toJSON():sub;
+  return {
+    endpoint:j.endpoint, keys:j.keys,
+    clubs:(FAN&&FAN.clubs)||[], matches:Object.keys(FANM||{}),
+    notif:NOTIF, lang:LANG
+  };
+}
+function pushSync(){
+  if(!pushable() || pushBusy) return;
+  pushBusy=true;
+  pushKeyLoad().then(function(key){
+    if(!key) { pushBusy=false; return }
+    return navigator.serviceWorker.ready.then(function(reg){
+      if(!reg || !reg.pushManager) return;
+      return reg.pushManager.getSubscription().then(function(existing){
+        if(!NOTIF.on){
+          if(!existing) return;
+          var ep=existing.endpoint;
+          return existing.unsubscribe().then(function(){
+            return api("/push/unsubscribe",{method:"POST",body:{endpoint:ep}}).catch(function(){});
+          });
+        }
+        if(existing) return api("/push/subscribe",{method:"POST",fan:true,body:subBody(existing)}).catch(function(){});
+        return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlB64(key)})
+          .then(function(sub){ return api("/push/subscribe",{method:"POST",fan:true,body:subBody(sub)}) })
+          .catch(function(){});
+      });
+    });
+  }).then(function(){ pushBusy=false }).catch(function(){ pushBusy=false });
 }
 
 function notifShow(title, body, tag){
@@ -969,6 +1024,9 @@ function notifCard(){
   h += row("ft",   LANG==="pa"?"Resultado final":"Full time");
   h += row("mine", LANG==="pa"?"Solamente mi klubnan":"Only my clubs");
   h += '<div class="btnrow" style="margin-top:6px"><button class="btn ghost sm" data-act="notiftest">'+esc(LANG==="pa"?"Purba un":"Send a test")+'</button></div>';
+  if(pushable() && PUSHKEY) h += '<p class="muted" style="font-size:11.5px;margin:8px 0 0">'+esc(LANG==="pa"
+    ? "Bo ta haña nan tambe ora e app ta será."
+    : "These reach you with the app closed too.")+'</p>';
   return h + '</div>';
 }
 
@@ -2445,6 +2503,10 @@ function refPanel(m){
     h += '<div class="reftap" style="grid-template-columns:1fr">'+
       '<button class="bigbtn go" data-act="refstart" data-m="'+esc(m.id)+'"><b>'+esc(LANG==="pa"?"Kuminsá partido":"Kick off")+'</b>'+
       '<small>'+esc(LANG==="pa"?"Primi un biaha. E minüt ta kore su mes.":"Press once. The minute runs on its own.")+'</small></button></div>';
+    h += '<div class="btnrow" style="flex-wrap:wrap">'+
+      '<button class="btn ghost sm" data-act="reflineup" data-m="'+esc(m.id)+'" data-team="'+esc(m.home)+'">'+esc(club(m.home).abbr)+' XI</button>'+
+      '<button class="btn ghost sm" data-act="reflineup" data-m="'+esc(m.id)+'" data-team="'+esc(m.away)+'">'+esc(club(m.away).abbr)+' XI</button>'+
+      '</div>';
     return h;
   }
 
@@ -2471,6 +2533,8 @@ function refPanel(m){
 
   h += '<div class="btnrow" style="margin:4px 0 12px;flex-wrap:wrap">'+
     '<button class="btn ghost sm" data-act="refht" data-m="'+esc(m.id)+'">'+esc(LANG==="pa"?"Mitar tempo (HT)":"Half time (HT)")+'</button>'+
+    '<button class="btn ghost sm" data-act="reflineup" data-m="'+esc(m.id)+'" data-team="'+esc(m.home)+'">'+esc(club(m.home).abbr)+' XI</button>'+
+    '<button class="btn ghost sm" data-act="reflineup" data-m="'+esc(m.id)+'" data-team="'+esc(m.away)+'">'+esc(club(m.away).abbr)+' XI</button>'+
     '<button class="btn ghost sm" data-act="refminute" data-m="'+esc(m.id)+'">'+esc(LANG==="pa"?"Korigí minüt":"Fix the minute")+'</button>'+
   '</div>';
   h += refEventList(m);
@@ -2970,8 +3034,51 @@ function evLabel(e){
   if(e.t==="rc") return '<i style="width:9px;height:12px;border-radius:2px;background:var(--loss);display:inline-block"></i>';
   return "";
 }
+/* ───────── lineups ─────────
+   Kept as the referee typed them off the match sheet. The sheet is the record,
+   and most of these players are in no squad file we hold. */
+var LINEUP={}, openMatchId="";
+function lineupLoad(id){
+  if(!API || LINEUP[id]!==undefined) return;
+  LINEUP[id]="loading";
+  api("/lineup?m="+encodeURIComponent(id)).then(function(j){
+    LINEUP[id]=(j&&j.teams)||{};
+    if(!Object.keys(LINEUP[id]).length) return;
+    /* The match sheet lands after the card is already open, and a re render does
+       not touch a modal, so the card has to be drawn again. */
+    if(openMatchId===id && document.querySelector("#modalRoot .modal")) openMatch(id);
+    else render();
+  }).catch(function(){ LINEUP[id]={} });
+}
+function lineupBlock(m){
+  lineupLoad(m.id);
+  var L=LINEUP[m.id];
+  if(!L || L==="loading" || !Object.keys(L).length) return '';
+  function side(tid){
+    var t=L[tid];
+    if(!t || !(t.starters||[]).length) return '<div style="padding:12px"><p class="muted" style="font-size:12.5px;margin:0">'+
+      esc(LANG==="pa"?"Ainda no a manda":"Not sent in yet")+'</p></div>';
+    return '<div style="padding:10px 12px">'+
+      t.starters.map(function(n,i){
+        return '<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:13.5px">'+
+          '<span class="muted" style="flex:0 0 18px;font-weight:700;font-size:11px">'+(i+1)+'</span>'+
+          '<span style="font-weight:600">'+esc(n)+'</span></div>';
+      }).join("")+
+      ((t.subs||[]).length?'<div class="eyebrow" style="margin:10px 0 4px">'+esc(LANG==="pa"?"Banka":"Bench")+'</div>'+
+        t.subs.map(function(n){ return '<div class="muted" style="font-size:12.5px;padding:2px 0">'+esc(n)+'</div>' }).join(""):'')+
+      '</div>';
+  }
+  return '<div class="hr"></div><div class="eyebrow">'+esc(LANG==="pa"?"Alineashon":"Lineups")+'</div>'+
+    '<div class="card" style="margin-top:8px;padding:0;display:grid;grid-template-columns:1fr 1fr">'+
+      '<div style="border-right:1px solid var(--line-soft)">'+
+        '<div class="compgrp" style="border-bottom:1px solid var(--line-soft)">'+esc(club(m.home).short)+'</div>'+side(m.home)+'</div>'+
+      '<div><div class="compgrp" style="border-bottom:1px solid var(--line-soft)">'+esc(club(m.away).short)+'</div>'+side(m.away)+'</div>'+
+    '</div>';
+}
+
 function openMatch(id){
   var m=DATA.matches.filter(function(x){return x.id===id})[0]; if(!m) return;
+  openMatchId=id;
   var done=m.status==="ft"||m.status==="live";
   var h='<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;text-align:center">'+
     '<button data-go="club/'+m.home+'" style="display:grid;justify-items:center;gap:6px">'+crest(m.home,"lg")+'<b style="font-size:13px">'+esc(club(m.home).short)+'</b></button>'+
@@ -3004,6 +3111,7 @@ function openMatch(id){
       }).join("")+
       (m.shortNotice?'<div class="earnrow"><span class="needchip">'+esc(T("shortNotice"))+'</span></div>':'')+'</div>';
   }
+  h+=lineupBlock(m);
   if(meta.length){
     h+='<div class="hr"></div><div class="card"><div class="statgrid">'+meta.map(function(x){
       return '<div class="stat-t"><div class="k">'+esc(x[0])+'</div><div class="v" style="font-size:14px">'+esc(x[1])+'</div></div>';
@@ -3939,6 +4047,66 @@ function myFeed(){
   if(trs.length) h+='<div class="sechead"><h2 style="font-size:15px">'+esc(T("transfers"))+'</h2></div><div class="card">'+trs.map(transferRow).join("")+'</div>';
   return h;
 }
+/* ───────── following ─────────
+   One screen that answers the only question a supporter has: when is my club
+   playing, and what happened last time. Starred matches sit alongside. */
+function followedMatches(){
+  var mine={};
+  (FAN.clubs||[]).forEach(function(c){ mine[c]=1 });
+  return DATA.matches.filter(function(m){
+    return mine[m.home] || mine[m.away] || (FANM && FANM[m.id]);
+  });
+}
+function viewFollowing(){
+  var t=today();
+  var all=followedMatches();
+  var live=all.filter(function(m){return m.status==="live"})
+    .sort(function(a,b){return (a.time||"").localeCompare(b.time||"")});
+  var next=all.filter(function(m){return m.status!=="ft"&&m.status!=="live"&&m.date>=t})
+    .sort(function(a,b){return a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")}).slice(0,12);
+  var last=all.filter(function(m){return m.status==="ft"})
+    .sort(function(a,b){return b.date.localeCompare(a.date)||(b.time||"").localeCompare(a.time||"")}).slice(0,12);
+
+  var h='<div class="sechead"><h2>'+esc(LANG==="pa"?"Mi futbòl":"My football")+'</h2>'+
+    '<span class="sub">'+esc((FAN.clubs||[]).length+" "+(LANG==="pa"?"klub":"clubs")+
+      (Object.keys(FANM||{}).length?" · "+Object.keys(FANM).length+" "+(LANG==="pa"?"partido":"matches"):""))+'</span>'+
+    '<button class="more" data-act="openpicker">'+esc(T("followMore"))+'</button></div>';
+
+  if(!(FAN.clubs||[]).length && !Object.keys(FANM||{}).length){
+    return h+'<div class="card"><div class="empty" style="padding:24px"><h3>'+esc(T("pickClub"))+'</h3>'+
+      '<p>'+esc(T("chooseClubBody"))+'</p>'+
+      '<div style="margin-top:14px"><button class="btn" data-act="openpicker">'+esc(T("chooseClub"))+'</button></div></div></div>';
+  }
+
+  if(live.length){
+    h+='<div class="sechead" style="margin-top:6px"><h2 style="font-size:15px">'+
+      '<span class="dot blink" style="color:var(--live)"></span> '+esc(T("live"))+'</h2></div>'+matchList(live,true);
+  }
+
+  /* each club's own next game, with the countdown */
+  if((FAN.clubs||[]).length){
+    h+='<div class="sechead" style="margin-top:14px"><h2 style="font-size:15px">'+esc(T("nextUp"))+'</h2></div>';
+    h+='<div class="card">'+FAN.clubs.map(function(id){
+      var nx=nextMatchFor(id), lm=lastMatchFor(id);
+      var sub = nx ? (club(nx.home===id?nx.away:nx.home).short+" · "+countdown(nx))
+                   : (lm ? (LANG==="pa"?"Último: ":"Last: ")+club(lm.home===id?lm.away:lm.home).short+" "+lm.hs+"-"+lm.as
+                         : T("nothingYet"));
+      return '<div class="lb">'+crest(id)+
+        '<button class="who" style="text-align:left" data-'+(nx?'match="'+esc(nx.id):'go="club/'+esc(id))+'"><b>'+esc(club(id).short)+
+        (FAN.primary===id?' <span class="pill acc">'+esc(T("myClub"))+'</span>':'')+'</b>'+
+        '<small>'+esc(sub)+'</small></button>'+
+        (nx?statusPill(nx,true):'')+'</div>';
+    }).join("")+'</div>';
+  }
+
+  if(next.length) h+='<div class="sechead" style="margin-top:14px"><h2 style="font-size:15px">'+
+    esc(LANG==="pa"?"Ta bin":"Coming up")+'</h2></div>'+matchList(next,true);
+  if(last.length) h+='<div class="sechead" style="margin-top:14px"><h2 style="font-size:15px">'+
+    esc(LANG==="pa"?"Último resultado":"Latest results")+'</h2></div>'+matchList(last,true);
+  h+=adFor("home");
+  return h;
+}
+
 /* ───────── profile, account and settings ─────────
    Everything about the person in one place: who they are, what they follow,
    what they get told about, and how the app looks. */
@@ -3983,6 +4151,8 @@ function viewProfile(){
   var prim = FAN.primary && club(FAN.primary) ? club(FAN.primary).short : "";
   h+='<div class="sechead" style="margin-top:16px"><h2 style="font-size:15px">'+esc(T("favourites"))+'</h2></div>';
   h+='<div class="card" style="padding:0">'+
+    '<button class="prow" data-go="following"><span class="pic">'+IC.fan+'</span><span class="lbl">'+esc(LANG==="pa"?"Mi futbòl":"My football")+'</span>'+
+      '<span class="sub2">'+esc(String(followedMatches().length))+'</span><span class="chev">›</span></button>'+
     '<button class="prow" data-act="openpicker"><span class="pic">'+IC.clubs+'</span><span class="lbl">'+esc(LANG==="pa"?"Mi klubnan":"My clubs")+'</span>'+
       '<span class="sub2">'+esc(FAN.clubs.length?(prim||FAN.clubs.length+"")+(FAN.clubs.length>1?" +"+(FAN.clubs.length-1):""):T("nothingYet"))+'</span><span class="chev">›</span></button>'+
     '<button class="prow" data-go="fan"><span class="pic">'+IC.fan+'</span><span class="lbl">'+esc(LANG==="pa"?"Mi pronóstiko":"My predictions")+'</span>'+
@@ -4326,6 +4496,7 @@ function render(){
     case "player": h=viewPlayer(); break;
     case "fan": h=viewFan(); break;
     case "profile": h=viewProfile(); break;
+    case "following": h=viewFollowing(); break;
     case "search": h=viewSearch(); break;
     case "arbiter": h=viewArbiter(); break;
     case "referee": h=viewReferee(); break;
@@ -4339,6 +4510,7 @@ function render(){
   if(document.querySelector(".daterail")){ centreDay(railReady); railReady=true }
   else railReady=false;
   if(document.getElementById("gbtn")){ gLoad(); gPaint(); }
+  if(document.querySelector("[data-notif]") && PUSHKEY===null) pushKeyLoad().then(function(k){ if(k) render() });
   /* A bracket is wider than a phone once the quarter finals exist, so open it on
      the round the cup has actually reached rather than on the first round. */
   (function(){
@@ -4616,6 +4788,42 @@ document.addEventListener("click",function(ev){
       break;
     }
     /* Second half whistle: the clock picks up at 45 and runs on its own again. */
+    /* One name per line, straight off the match sheet. Faster on a phone at a
+       ground than twenty two taps, and it accepts a name we have never seen. */
+    case "reflineup": {
+      var lm=a.getAttribute("data-m"), lt=a.getAttribute("data-team");
+      var cur=(LINEUP[lm]||{})[lt]||{starters:[],subs:[]};
+      if(LINEUP[lm]===undefined || LINEUP[lm]==="loading"){ lineupLoad(lm); }
+      var sq=(DATA.players||[]).filter(function(x){return x.club===lt}).map(function(x){return x.name});
+      openModal(club(lt).short+" · "+(LANG==="pa"?"Alineashon":"Lineup"),
+        '<p class="muted" style="margin:0 0 10px;font-size:12.5px">'+esc(LANG==="pa"
+          ? "Un nòmber pa kada liña, den òrdu di kamiseta."
+          : "One name per line, in shirt order.")+'</p>'+
+        '<div class="field"><label>'+esc(LANG==="pa"?"E once":"The eleven")+'</label>'+
+          '<textarea id="lustart" rows="11" style="font-size:14px">'+esc((cur.starters||[]).join("\n"))+'</textarea></div>'+
+        '<div class="field"><label>'+esc(LANG==="pa"?"Banka":"Bench")+'</label>'+
+          '<textarea id="lusubs" rows="5" style="font-size:14px">'+esc((cur.subs||[]).join("\n"))+'</textarea></div>'+
+        (sq.length?'<p class="muted" style="font-size:11.5px;margin:6px 0 0">'+esc(LANG==="pa"?"Den nos lista: ":"In our squad list: ")+esc(sq.slice(0,14).join(", "))+'</p>':''),
+        '<button class="btn" data-act="lineupsave" data-m="'+esc(lm)+'" data-team="'+esc(lt)+'">'+esc(T("save"))+'</button>'+
+        '<button class="btn ghost" data-act="closemodal">'+esc(T("cancel"))+'</button>');
+      break;
+    }
+    case "lineupsave": {
+      var sm=a.getAttribute("data-m"), st2=a.getAttribute("data-team");
+      var s1=$("#lustart"), s2=$("#lusubs");
+      if(!s1) break;
+      refSend("/ref/match/"+sm+"/lineup",{team:st2,starters:s1.value,subs:s2?s2.value:""})
+        .then(function(r){
+          if(r&&r.queued){ toast(T("queued")) }
+          else{
+            LINEUP[sm]=LINEUP[sm]&&LINEUP[sm]!=="loading"?LINEUP[sm]:{};
+            LINEUP[sm][st2]={starters:r.starters||[],subs:r.subs||[]};
+            toast(T("saved"));
+          }
+          closeModal(); render();
+        }).catch(function(e){ toast(e.message) });
+      break;
+    }
     case "refsecond": {
       var s2=a.getAttribute("data-m");
       refSend("/ref/match/"+s2+"/second",{}).then(function(r){
@@ -4978,6 +5186,7 @@ function applyRemote(remote){
   }catch(e){}
 })();
 if(API && FANU) setTimeout(prefsPull, 600);
+if(NOTIF.on) setTimeout(pushSync, 2500);
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",function(){ navigator.serviceWorker.register("./sw.js").catch(function(){}) });
