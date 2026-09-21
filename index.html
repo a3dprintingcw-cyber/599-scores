@@ -567,6 +567,17 @@ td.pts{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:15
 "use strict";
 /* ───────── data ───────── */
 var DATA = JSON.parse(document.getElementById("app-data").textContent);
+/* A second, untouched copy of what shipped inside this app file. A phone that
+   already has an older copy in storage must still pick up anything new that
+   came with the app itself, a fixture put in by hand above all, instead of
+   keeping only what it had before. */
+var BAKED = JSON.parse(document.getElementById("app-data").textContent);
+/* Keys a fresh data.json must not wipe. The FFK file knows nothing about
+   adverts, reward rates or the server address, so whatever we already hold wins
+   when the incoming file has nothing to say about them. */
+var MINE=["transfers","news","rewards","sponsors","refledger","refrules","refinfo",
+          "refstart","ads","adsettings","googleClientId","api","ourtables","newseasons",
+          "ownmatches"];
 DATA.matches.forEach(function(m){ m.ffkFinal = m.status === "ft" });
 var TEMPLATE = null, artifactCap = null, downloadsCap = null, dirty = false;
 var STANDALONE = true;
@@ -5427,7 +5438,13 @@ window.addEventListener("beforeunload",function(e){ if(dirty){ e.preventDefault(
 try{ TEMPLATE="<!doctype html>\n"+document.documentElement.outerHTML }catch(e){ TEMPLATE=null }
 (function(){
   var local=lsGet("kf.data",null);
-  if(local&&local.clubs&&local.divisions){ DATA=local; reindex(); }
+  if(local&&local.clubs&&local.divisions){
+    MINE.forEach(function(k){
+      var v=local[k];
+      if(BAKED[k]!==undefined && (v===undefined || (Array.isArray(v) && !v.length))) local[k]=BAKED[k];
+    });
+    DATA=local; reindex();
+  }
 })();
 LANG=lsGet("kf.lang","pa");
 applyTheme();
@@ -5472,15 +5489,17 @@ render();
    when the incoming file has nothing to say about them. Without this an advert
    disappears the moment the fixture file refreshes, and only comes back if the
    /content fetch succeeds. */
-var MINE=["transfers","news","rewards","sponsors","refledger","refrules","refinfo",
-          "refstart","ads","adsettings","googleClientId","api","ourtables","newseasons",
-          "ownmatches"];
+/* MINE is declared at the top, next to BAKED. */
 function applyRemote(remote){
   if(!remote||!remote.clubs||!remote.divisions) return false;
   var have=lsGet("kf.data",null)||DATA;
   if(have.updated && remote.updated && remote.updated < have.updated && !have.fromRemote) return false;
   var next=JSON.parse(JSON.stringify(remote));
   MINE.forEach(function(k){ if(have[k]&&(!next[k]||!next[k].length)) next[k]=have[k] });
+  MINE.forEach(function(k){
+    var v=next[k];
+    if(BAKED[k]!==undefined && (v===undefined || (Array.isArray(v) && !v.length))) next[k]=BAKED[k];
+  });
   /* Whatever the server said we published wins over the fixture file, whichever
      of the two landed first. */
   if(LASTC) OWNKEYS.forEach(function(k){ if(LASTC[k]!==undefined) next[k]=LASTC[k] });
