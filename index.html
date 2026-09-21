@@ -2777,16 +2777,23 @@ function admRefsPanel(){
     esc(LANG==="pa"?"Ningun kuenta ainda":"No accounts yet")+'</h3><p>'+
     esc(LANG==="pa"?"Traha un kuenta i duna e arbiter su kódigo.":"Create one and give the referee the code it hands back.")+'</p></div></div>';
   h+='<div class="card">'+rows.map(function(r){
-    return '<div class="lb"><span class="refav'+(r.role==="admin"?" w":"")+'">'+esc(initials(r.name))+'</span>'+
-      '<span class="who"><b>'+esc(r.name)+(r.active?'':' <span class="pill">off</span>')+
+    var fresh = !r.claimed && !(+r.history||0);
+    return '<div class="lb" style="flex-wrap:wrap"><span class="refav'+(r.role==="admin"?" w":"")+'">'+esc(initials(r.name))+'</span>'+
+      '<span class="who"><b>'+esc(r.name)+(r.active?'':' <span class="pill">'+esc(LANG==="pa"?"pagá":"off")+'</span>')+
         (r.role==="admin"?' <span class="pill acc">admin</span>':'')+'</b>'+
         '<small>'+esc(r.ffk_name||"")+' · '+
         (r.claimed
           ? esc(LANG==="pa"?"a drenta":"signed in")
           : '<span style="font-family:ui-monospace,monospace">'+esc(r.invite||"—")+'</span>')+
         '</small></span>'+
-      '<button class="btn ghost sm" data-act="srvreset" data-r="'+esc(r.id)+'">'+
-        esc(LANG==="pa"?"Kódigo nobo":"New code")+'</button></div>';
+      '<span class="btnrow" style="gap:6px">'+
+        '<button class="btn ghost sm" data-act="srvreset" data-r="'+esc(r.id)+'">'+
+          esc(LANG==="pa"?"Kódigo nobo":"New code")+'</button>'+
+        '<button class="btn ghost sm" data-act="srvactive" data-r="'+esc(r.id)+'" data-on="'+(r.active?'0':'1')+'">'+
+          (r.active?esc(LANG==="pa"?"Paga":"Switch off"):esc(LANG==="pa"?"Sende":"Switch on"))+'</button>'+
+        (fresh?'<button class="btn danger sm" data-act="srvdelref" data-r="'+esc(r.id)+'" data-n="'+esc(r.name)+'">'+
+          esc(LANG==="pa"?"Kita":"Delete")+'</button>':'')+
+      '</span></div>';
   }).join("")+'</div>';
   return h;
 }
@@ -3610,6 +3617,21 @@ document.addEventListener("click",function(ev){
           render();
         }).catch(function(e){ toast(e.message) });
       },null);
+      break;
+    }
+    case "srvactive": {
+      var aid=a.getAttribute("data-r"), aon=a.getAttribute("data-on")==="1";
+      api("/admin/referees/active",{method:"POST",auth:true,body:{id:aid,active:aon}})
+        .then(function(){ ADMREFS=null; BOARD=null; toast(T("saved")); render() })
+        .catch(function(e){ toast(e.message) });
+      break;
+    }
+    case "srvdelref": {
+      var did=a.getAttribute("data-r"), dnm=a.getAttribute("data-n")||did;
+      if(!confirm((LANG==="pa"?"Kita ":"Delete ")+dnm+"?")) break;
+      api("/admin/referees/delete",{method:"POST",auth:true,body:{id:did}})
+        .then(function(){ ADMREFS=null; BOARD=null; toast(T("saved")); render() })
+        .catch(function(e){ toast(e.message) });
       break;
     }
     case "srvreset": {
