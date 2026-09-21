@@ -134,8 +134,14 @@ raw.competitions.forEach(comp => {
   const groupOfMatch = {};
   comp.matches.forEach(m => {
     if (!m.home || !m.away) return;
+    /* The federation's own match number, not a position in a list. Numbering
+       these m1, m2, m3 in scrape order meant every id moved whenever the feed
+       gained or reordered a match, and a result a referee had already recorded
+       then belonged to a different game. The feed's own id never moves. */
     matches.push({
-      id: 'm' + (++mn), div: id, group: groupOfMatch[m.matchId] || '', md: 0,
+      id: m.mid ? ('f' + m.mid) : ('m' + (++mn)),
+      ffk: m.mid || '',
+      div: id, group: groupOfMatch[m.mid] || '', md: 0,
       phase: m.phase || '',
       date: m.date, time: to24(m.time),
       venue: m.venue || '', ref: m.referee || '',
