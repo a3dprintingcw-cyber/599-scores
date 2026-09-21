@@ -565,7 +565,7 @@ var STR = {
   signOut:["Sali","Sign out"], welcome:["Bon bini","Welcome"],
   queued:["Wardá, ta manda ora tin señal","Saved, will send when there is signal"],
   adsTab:["Publisidat","Ads"],
-  editor:["Editor","Editor"], publish:["Warda + baha app","Save + download app"], publishing:["Ta warda…","Saving…"],
+  editor:["Editor","Editor"], publish:["Publiká","Publish"], publishing:["Ta publiká…","Publishing…"],
   unsaved:["Kambio no publiká","Unpublished changes"],
   add:["Añadí","Add"], edit:["Editá","Edit"], del:["Kita","Delete"], save:["Warda","Save"], cancel:["Kanselá","Cancel"],
   clearSample:["Kita tur data di muestra","Clear all sample data"],
@@ -835,6 +835,38 @@ function applyLive(feed){
   return changed;
 }
 
+/* Every final score the referees have signed off this season. /live only carries
+   the last few hours, so without this the table would forget a result the moment
+   it went cold. */
+var OURRES = null;
+function loadResults(){
+  if(!API || OURRES==="loading") return;
+  OURRES="loading";
+  api("/results").then(function(j){
+    OURRES = j.results || [];
+    var byId = {};
+    DATA.matches.forEach(function(m){ byId[m.id]=m });
+    var changed = false;
+    OURRES.forEach(function(r){
+      var m = byId[r.id]; if(!m) return;
+      if(m.status!=="ft" || m.hs!==r.hs || m.as!==r.as){
+        m.status="ft"; m.hs=r.hs; m.as=r.as; m.ours=true; changed=true;
+      } else { m.ours=true; }
+    });
+    if(changed) render();
+  }).catch(function(){ OURRES=[] });
+}
+
+function haveOurResults(divId){
+  return DATA.matches.some(function(m){ return m.div===divId && m.ours && m.status==="ft" });
+}
+/* Our table is used only where the admin has asked for it. The federation file
+   stays the default, and stays available as a cross check. */
+function useOurTable(divId){
+  var on = DATA.ourtables && DATA.ourtables[divId];
+  return !!on && haveOurResults(divId);
+}
+
 function pollLive(){
   if(!API) return Promise.resolve();
   return api("/live?t=" + Date.now()).then(function(f){
@@ -919,7 +951,7 @@ if(API){ try{ if(lsGet("kf.adm","")) lsSet("kf.adm",""); }catch(e){} }
 /* Publishing writes to the server, so every phone sees it on next open.
    Without a server it falls back to downloading a fresh copy of the app. */
 function publishContent(){
-  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings","googleClientId"];
+  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings","googleClientId","ourtables"];
   var payload={};
   OWNED.forEach(function(k){ if(DATA[k]!==undefined) payload[k]=DATA[k] });
   return api("/admin/content",{method:"POST",body:payload,auth:true});
@@ -928,7 +960,7 @@ function publishContent(){
 /* Merge what the admin published over the file from GitHub. */
 function applyContent(c){
   if(!c) return false;
-  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings","googleClientId"];
+  var OWNED=["transfers","news","rewards","sponsors","refrules","refinfo","refstart","ads","adsettings","googleClientId","ourtables"];
   var changed=false;
   OWNED.forEach(function(k){
     if(c[k]===undefined) return;
@@ -1069,7 +1101,7 @@ function finished(m){return m.status==="ft"}
 function matchesOf(divId){ return DATA.matches.filter(function(m){return !divId||m.div===divId}) }
 function standings(divId,mode){
   mode=mode||"all";
-  var st=storedTable(divId);
+  var st=useOurTable(divId) ? null : storedTable(divId);
   if(st) return st.map(function(r){
     return {pos:r[0],id:r[1],p:r[2],w:r[3],l:r[4],d:r[5],gf:r[6],ga:r[7],pts:r[8],gd:r[9],cs:0,form:clubForm(r[1],5)};
   });
@@ -1562,6 +1594,11 @@ function viewTable(){
      (groupsOf(R.div).length>1?'<span class="sub">'+esc(groupName(R.div,activeGroup(R.div)))+'</span>':'')+
      (d.status==="live"?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
   h+=tableCard(R.div,stored?"all":tableMode,false);
+  if(useOurTable(R.div)){
+    h+='<p class="muted" style="font-size:11.5px;margin:8px 2px">'+
+      esc(LANG==="pa"?"E tabel aki ta kalkulá for di e resultadonan ku e arbiternan a manda: 3 punto pa gana, 1 pa kita, 0 pa perde."
+                     :"This table is worked out from the results the referees sent in: 3 points for a win, 1 for a draw, 0 for a loss.")+'</p>';
+  }
   h+=adFor("table");
   var gm=goalsByMatchday(R.div);
   var ms=matchesOf(R.div).filter(function(m){return m.status==="ft"});
@@ -2417,11 +2454,17 @@ function admDash(){
   if(OV.error) return '<div class="card"><div class="empty"><h3>'+esc(LANG==="pa"?"No por karga":"Could not load")+'</h3></div></div>';
 
   var pp=OV.people||{}, daily=OV.daily||[], ads=OV.ads||[], screens=OV.screens||[], refs=OV.referees||[];
+  var warn = (OV.counting===false)
+    ? '<div class="banner"><div><b>'+esc(LANG==="pa"?"E kontamentu no ta instalá ainda.":"Counting is not set up yet.")+'</b> '+
+      esc(LANG==="pa"?"E numbernan di abou ta zero pasobra e tabelnan no ta eksistí, no pasobra niun hende no a bin."
+                     :"The numbers below are zero because the tables do not exist, not because nobody came.")+'</div></div>'
+    : '';
   var h='<div class="btnrow" style="margin:10px 0">'+
     [7,30,90].map(function(d){
       return '<button class="tab sm" data-act="ovdays" data-d="'+d+'" aria-pressed="'+(OVDAYS===d)+'">'+d+' '+esc(LANG==="pa"?"dia":"days")+'</button>';
     }).join("")+'<button class="btn ghost sm" data-act="ovreload" style="margin-left:auto">'+esc(LANG==="pa"?"Refresh":"Refresh")+'</button></div>';
 
+  h+=warn;
   h+='<div class="card"><div class="statgrid">'+
     '<div class="stat-t"><div class="k">'+esc(LANG==="pa"?"Hende awe":"People today")+'</div><div class="v">'+num(pp.today)+'</div></div>'+
     '<div class="stat-t"><div class="k">'+esc(LANG==="pa"?"Últimó 7 dia":"Last 7 days")+'</div><div class="v">'+num(pp.week)+'</div></div>'+
@@ -2679,6 +2722,22 @@ function admSettings(){
     '<p class="muted" style="font-size:12px;margin:-4px 0 10px">'+esc(LANG==="pa"?"Laga bashí pa kita e boton di Google. Sin esaki niun kódigo di Google no ta karga."
                                                                                 :"Leave empty to hide the Google button. Without it no Google code loads at all.")+'</p>'+
     '<div class="btnrow"><button class="btn sm" data-act="savesettings">'+esc(T("save"))+'</button></div></div>';
+  h+='<div class="card" style="padding:14px;margin-top:12px"><div class="eyebrow">'+
+    esc(LANG==="pa"?"Nos mes tabel":"Our own table")+'</div>'+
+    '<p class="muted" style="font-size:13px;margin:8px 0">'+
+    esc(LANG==="pa"?"Pone esaki ora e arbiternan ta manda e resultadonan. E ora ei e app ta kalkulá e tabel su mes: 3 punto pa gana, 1 pa kita, 0 pa perde. Si bo laga esaki apagá, e tabel ta bini di FFK."
+                   :"Turn this on for a competition once your referees are sending in the results. The app then works out the table itself: 3 points for a win, 1 for a draw, 0 for a loss. Left off, the table comes from the FFK.")+'</p>'+
+    '<div class="card">'+DATA.divisions.map(function(dv){
+      var on=!!(DATA.ourtables&&DATA.ourtables[dv.id]), got=haveOurResults(dv.id);
+      var many=(dv.groups||[]).length>1;
+      return '<div class="lb"><span class="who"><b>'+esc(dv.short)+' <span class="muted" style="font-weight:400">'+esc(dv.season)+'</span></b>'+
+        '<small>'+(got?esc(LANG==="pa"?"tin resultado di arbiter":"has referee results")
+                     :esc(LANG==="pa"?"ainda sin resultado di arbiter":"no referee results yet"))+
+        (many?' · '+esc(LANG==="pa"?"e kompetishon aki tin fase; nos tabel ta konta tur partido huntu":"this competition has phases; our table counts every match together"):'')+
+        '</small></span>'+
+        '<button class="btn '+(on?'':'ghost ')+'sm" data-act="ourtable" data-d="'+esc(dv.id)+'">'+
+          (on?esc(LANG==="pa"?"Ta na":"On"):esc(LANG==="pa"?"Pagá":"Off"))+'</button></div>';
+    }).join("")+'</div></div>';
   h+='<div class="card" style="padding:14px;margin-top:12px"><div class="eyebrow">'+esc(T("sampleTitle"))+'</div>'+
     '<p class="muted" style="font-size:13px;margin:8px 0">'+samples+' '+esc(LANG==="pa"?"item di muestra (hungadó, partido, transfer, notisia). E klubnan ta keda.":"sample items (players, matches, transfers, news). Clubs are kept.")+'</p>'+
     '<button class="btn danger sm" data-act="clearsample"'+(samples?'':' disabled')+'>'+esc(T("clearSample"))+'</button></div>';
@@ -3524,6 +3583,12 @@ document.addEventListener("click",function(ev){
       if(nv.length<4){ toast(T("codeShort")); break }
       DATA.adminpin=admHash(nv); lsSet("kf.adm",DATA.adminpin); mark(); toast(T("codeSaved")); render(); break;
     }
+    case "ourtable": {
+      var od=a.getAttribute("data-d");
+      DATA.ourtables=DATA.ourtables||{};
+      DATA.ourtables[od]=!DATA.ourtables[od];
+      mark(); render(); break;
+    }
     case "ovdays": OVDAYS=+a.getAttribute("data-d")||30; OV=null; render(); break;
     case "ovreload": OV=null; render(); break;
     case "srvnewref": {
@@ -3689,7 +3754,7 @@ document.addEventListener("click",function(ev){
       refSend("/ref/match/"+mid5+"/confirm",{})
         .then(function(r){
           if(r&&r.queued) toast(T("queued"));
-          else refApply(mid5,{status:"ft",confirmed:true,hs:r.hs,as:r.as});
+          else { refApply(mid5,{status:"ft",confirmed:true,hs:r.hs,as:r.as}); OURRES=null; loadResults(); }
           toast(T("saved")); render(); pollLive();
         }).catch(function(e){ toast(e.message) });
       break;
@@ -3892,6 +3957,7 @@ parseHash();
 render();
 liveLoop();
 loadContent();
+loadResults();
 if(!FAN.onboard && DATA.clubs.length) setTimeout(function(){ if(!document.querySelector(".modal")) openPicker() },700);
 
 artifactCap = {standalone:true};
@@ -3905,7 +3971,7 @@ render();
    disappears the moment the fixture file refreshes, and only comes back if the
    /content fetch succeeds. */
 var MINE=["transfers","news","rewards","sponsors","refledger","refrules","refinfo",
-          "refstart","ads","adsettings","googleClientId","api"];
+          "refstart","ads","adsettings","googleClientId","api","ourtables"];
 function applyRemote(remote){
   if(!remote||!remote.clubs||!remote.divisions) return false;
   var have=lsGet("kf.data",null)||DATA;
