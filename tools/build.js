@@ -91,9 +91,18 @@ raw.competitions.forEach(comp => {
     const k = phaseKey(st.label, st.q);
     if (tables[id][k]) return;
     /* The phase level standings page, with no poule picked, just repeats one of
-       the poules. Left in, it shows up as a duplicate group. */
+       the poules. Left in it shows up as a duplicate group, and whichever of the
+       two arrives first wins, which is how a real Poule D once lost its place to
+       a copy of itself called fase2kk. A named poule always wins. */
     const sig = JSON.stringify(rows);
-    if (Object.keys(tables[id]).some(x => JSON.stringify(tables[id][x]) === sig)) return;
+    const dupe = Object.keys(tables[id]).filter(x => JSON.stringify(tables[id][x]) === sig)[0];
+    const named = x => /^(poule|group)[A-Z]$/.test(x);
+    if (dupe) {
+      if (!(named(k) && !named(dupe))) return;
+      delete tables[id][dupe];
+      const at = groups.findIndex(g => g[0] === dupe);
+      if (at >= 0) groups.splice(at, 1);
+    }
     tables[id][k] = rows;
     groups.push([k, st.label.replace(/\s+/g, ' ').trim()]);
     rows.forEach(r => { if (byId[r[1]] && !byId[r[1]].div) byId[r[1]].div = id; });

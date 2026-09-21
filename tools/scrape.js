@@ -203,19 +203,7 @@ async function logosAsDataURIs(urls) {
 
     const seen = {};
 
-    /* Phase by phase first, so each match keeps the phase it was played in. */
-    for (const lbl of phaseNames(top)) {
-      const q = 'phaseName=' + encodeURIComponent(lbl) + '&';
-      let pds = dates(await get(`/competition/${c.id}/schedule?${q}`));
-      if (MAXD) pds = pds.slice(-MAXD);
-      (await pool(pds, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&${q}`), dt)))
-        .forEach(a => (a || []).forEach(m => {
-          if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = lbl; entry.matches.push(m) }
-        }));
-      log('  phase', lbl, '->', pds.length, 'dates');
-    }
-
-    /* Then a sweep with no phase filter, for anything no phase claimed. */
+    /* Every date this competition has, before any phase filtering. */
     const ds = new Set();
     for (const p of ph) {
       const h = await get(`/competition/${c.id}/schedule?${p.q.replace(/standings/g, 'schedule')}`);
@@ -225,6 +213,23 @@ async function logosAsDataURIs(urls) {
     let list = [...ds].sort();
     if (MAXD) list = list.slice(-MAXD);
     log('  dates:', list.length);
+
+    /* Phase by phase first, so each match keeps the phase it was played in.
+       Some phases ignore the filter and hand back the whole season, and going
+       date by date through those would triple the length of the run for nothing,
+       so a phase is only walked when the filter actually narrowed it. */
+    for (const lbl of phaseNames(top)) {
+      const q = 'phaseName=' + encodeURIComponent(lbl) + '&';
+      let pds = dates(await get(`/competition/${c.id}/schedule?${q}`));
+      if (MAXD) pds = pds.slice(-MAXD);
+      if (!pds.length || pds.length >= list.length) { log('  phase', lbl, '-> not filtered, skipped'); continue }
+      (await pool(pds, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&${q}`), dt)))
+        .forEach(a => (a || []).forEach(m => {
+          if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = lbl; entry.matches.push(m) }
+        }));
+      log('  phase', lbl, '->', pds.length, 'dates');
+    }
+
     (await pool(list, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&`), dt)))
       .forEach(a => (a || []).forEach(m => { if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = m.phase || ''; entry.matches.push(m) } }));
     log('  fixtures:', entry.matches.length, '| tables:', entry.standings.length);
