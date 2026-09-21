@@ -55,6 +55,18 @@ function phases(html) {
     .filter(x => x.q && !seen[x.q] && (seen[x.q] = 1));
 }
 
+/* The competition's own phases, by name. The federation keeps a group stage and
+   a knock out as separate phases, and a match means something different in each,
+   so every match has to carry the one it came from. */
+function phaseNames(html) {
+  const seen = {};
+  return phases(html).map(x => {
+    const m = /phaseName=([^&]*)/.exec(x.q);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1].replace(/\+/g, ' ')).trim() } catch (e) { return m[1].replace(/\+/g, ' ').trim() }
+  }).filter(l => l && !seen[l] && (seen[l] = 1));
+}
+
 const dates = html => [...new Set(
   (html.match(/SelectedDates\[['"](\d{4}-\d{2}-\d{2})/g) || []).map(s => s.slice(-10)))];
 
@@ -189,6 +201,21 @@ async function logosAsDataURIs(urls) {
       noteTeam(id, txt(a), '', img ? img.getAttribute('src') : '');
     });
 
+    const seen = {};
+
+    /* Phase by phase first, so each match keeps the phase it was played in. */
+    for (const lbl of phaseNames(top)) {
+      const q = 'phaseName=' + encodeURIComponent(lbl) + '&';
+      let pds = dates(await get(`/competition/${c.id}/schedule?${q}`));
+      if (MAXD) pds = pds.slice(-MAXD);
+      (await pool(pds, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&${q}`), dt)))
+        .forEach(a => (a || []).forEach(m => {
+          if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = lbl; entry.matches.push(m) }
+        }));
+      log('  phase', lbl, '->', pds.length, 'dates');
+    }
+
+    /* Then a sweep with no phase filter, for anything no phase claimed. */
     const ds = new Set();
     for (const p of ph) {
       const h = await get(`/competition/${c.id}/schedule?${p.q.replace(/standings/g, 'schedule')}`);
@@ -198,9 +225,8 @@ async function logosAsDataURIs(urls) {
     let list = [...ds].sort();
     if (MAXD) list = list.slice(-MAXD);
     log('  dates:', list.length);
-    const seen = {};
     (await pool(list, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&`), dt)))
-      .forEach(a => (a || []).forEach(m => { if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; entry.matches.push(m) } }));
+      .forEach(a => (a || []).forEach(m => { if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = m.phase || ''; entry.matches.push(m) } }));
     log('  fixtures:', entry.matches.length, '| tables:', entry.standings.length);
     raw.competitions.push(entry);
   }

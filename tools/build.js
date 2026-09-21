@@ -73,17 +73,27 @@ raw.competitions.forEach(comp => {
   const groups = [];
   tables[id] = {};
   comp.standings.forEach(st => {
-    const rows = st.rows.slice(1)
+    /* The scraper already hands over one row per club, with the club's own id in
+       position 1. Two things were wrong here and both ended in an empty table:
+       the first club was sliced off as if it were a header, and the id was looked
+       up as if it were a name. An empty table is not loud, it just leaves the old
+       one standing, so this had to be read closely rather than trusted. */
+    const rows = st.rows
       .map(r => r.filter(x => x !== ''))
       .filter(r => r.length >= 9)
       .map(r => {
         const nums = r.slice(-8).map(Number);
-        return [Number(r[0]), cid(r[1]), nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6], nums[7]];
+        const club = byId[String(r[1] || '').trim()] ? String(r[1]).trim() : cid(r[1]);
+        return [Number(r[0]), club, nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6], nums[7]];
       })
-      .filter(r => r[1]);
+      .filter(r => r[1] && Number.isFinite(r[0]));
     if (!rows.length) return;
     const k = phaseKey(st.label, st.q);
     if (tables[id][k]) return;
+    /* The phase level standings page, with no poule picked, just repeats one of
+       the poules. Left in, it shows up as a duplicate group. */
+    const sig = JSON.stringify(rows);
+    if (Object.keys(tables[id]).some(x => JSON.stringify(tables[id][x]) === sig)) return;
     tables[id][k] = rows;
     groups.push([k, st.label.replace(/\s+/g, ' ').trim()]);
     rows.forEach(r => { if (byId[r[1]] && !byId[r[1]].div) byId[r[1]].div = id; });
@@ -117,6 +127,7 @@ raw.competitions.forEach(comp => {
     if (!m.home || !m.away) return;
     matches.push({
       id: 'm' + (++mn), div: id, group: groupOfMatch[m.matchId] || '', md: 0,
+      phase: m.phase || '',
       date: m.date, time: to24(m.time),
       venue: m.venue || '', ref: m.referee || '',
       home: m.home, away: m.away, hs: m.hs || 0, as: m.as || 0,
@@ -129,6 +140,70 @@ raw.competitions.forEach(comp => {
   const last = dates[dates.length - 1] || '';
   const status = comp.matches.some(m => m.status === 'live') ? 'live'
     : (last && last >= today ? 'live' : 'done');
+
+  /* A cup ends in a bracket, not a table. Everything below is wrapped so that a
+     surprise in the federation's data can never take the rest of the file down. */
+  try {
+    const mine = matches.filter(m => m.div === id);
+    const KO = /knock\s*-?\s*out|\bk\.?o\.?\b/i;
+    const koList = mine.filter(m => KO.test(m.phase || ''));
+    if (koList.length) {
+      /* In a bracket a club plays at most once per round, so a repeat means the
+         next round has started. */
+      const sorted = koList.slice().sort((a, b) =>
+        (a.date + ' ' + (a.time || '')).localeCompare(b.date + ' ' + (b.time || '')) || a.id.localeCompare(b.id));
+      let round = 1, seen = {};
+      sorted.forEach(m => {
+        if (seen[m.home] || seen[m.away]) { round++; seen = {} }
+        seen[m.home] = 1; seen[m.away] = 1;
+        m.ko = true; m.round = round;
+      });
+    }
+
+    /* Clubs that played a group match but sit in no poule the federation lists.
+       Their poule exists, it is just missing from the menu, so work it out. */
+    const inGroup = {};
+    Object.keys(tables[id] || {}).forEach(k => (tables[id][k] || []).forEach(r => { inGroup[r[1]] = 1 }));
+    const orphanMs = mine.filter(m => !m.ko && !inGroup[m.home] && !inGroup[m.away]);
+    if (orphanMs.length && Object.keys(tables[id] || {}).length) {
+      const row = {};
+      const put = c => (row[c] = row[c] || { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 });
+      orphanMs.forEach(m => {
+        put(m.home); put(m.away);
+        if (m.status !== 'ft') return;
+        const h = row[m.home], a = row[m.away];
+        h.p++; a.p++; h.gf += m.hs; h.ga += m.as; a.gf += m.as; a.ga += m.hs;
+        if (m.hs > m.as) { h.w++; h.pts += 3; a.l++ }
+        else if (m.as > m.hs) { a.w++; a.pts += 3; h.l++ }
+        else { h.d++; a.d++; h.pts++; a.pts++ }
+      });
+      const order = Object.keys(row).sort((x, y) =>
+        row[y].pts - row[x].pts ||
+        (row[y].gf - row[y].ga) - (row[x].gf - row[x].ga) ||
+        row[y].gf - row[x].gf || String(x).localeCompare(String(y)));
+      const rows = order.map((c, i) => {
+        const r = row[c];
+        return [i + 1, c, r.p, r.w, r.l, r.d, r.gf, r.ga, r.pts, r.gf - r.ga];
+      });
+      /* Name it after the letter missing from the poules that are listed. */
+      const letters = groups.map(g => (/^poule([A-Z])$/.exec(g[0]) || [])[1]).filter(Boolean);
+      let letter = '';
+      if (letters.length) {
+        const have = {}; letters.forEach(l => have[l] = 1);
+        const top = letters.map(l => l.charCodeAt(0)).sort((a, b) => a - b).pop();
+        for (let cc = 65; cc <= top; cc++) if (!have[String.fromCharCode(cc)]) { letter = String.fromCharCode(cc); break }
+        if (!letter) letter = String.fromCharCode(top + 1);
+      }
+      const key = letter ? 'poule' + letter : 'pouleX';
+      if (rows.length && !tables[id][key]) {
+        tables[id][key] = rows;
+        groups.push([key, letter ? 'Poule ' + letter : 'Poule']);
+        groups.sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+      }
+    }
+  } catch (e) {
+    console.log('[build] cup shape skipped for', id, e.message);
+  }
 
   divisions.push({
     id, name: comp.name, short: shortOf(comp.name), en: comp.name,
