@@ -1,5 +1,5 @@
 /* 599 Scores — offline cache. App shell only, never the API. */
-const CACHE = '599-scores-v5';
+const CACHE = '599-scores-v6';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './data.json',
   './icon-48.png','./icon-72.png','./icon-96.png','./icon-144.png','./icon-180.png',
@@ -57,4 +57,29 @@ self.addEventListener('fetch', e => {
       return r;
     }).catch(() => hit))
   );
+});
+
+/* Tapping a notification should land you in the app, not open a second copy. */
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const want = (e.notification.data && e.notification.data.u) || './';
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) {
+      if (c.url.startsWith(self.location.origin)) { await c.focus(); return }
+    }
+    await self.clients.openWindow(want);
+  })());
+});
+
+/* Room for real push later: a push arrives here even with the app closed.
+   Nothing subscribes yet, so this never fires today. */
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {} } catch (err) { d = { title: '599 Scores', body: e.data ? e.data.text() : '' } }
+  const title = d.title || '599 Scores';
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || '', tag: d.tag || 'push', icon: './icon-192.png', badge: './icon-96.png',
+    data: { u: d.url || './' }
+  }));
 });

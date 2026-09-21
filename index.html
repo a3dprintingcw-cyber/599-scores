@@ -291,6 +291,30 @@ a{color:var(--accent);text-decoration:none}
 .adthumb{width:74px;height:40px;object-fit:cover;border-radius:7px;background:var(--surface-2,var(--line));flex:0 0 74px}
 .imgfield{display:grid;gap:8px}
 .imgprev img{width:100%;border-radius:10px;display:block}
+.kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.kobracket{position:relative;margin:0 auto}
+.kolines{position:absolute;inset:0;fill:none;stroke:var(--line);stroke-width:1.5}
+.kohead{position:absolute;top:0;font-size:9.5px;font-weight:800;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--ink-3);text-align:center;line-height:1.1}
+.kobox{position:absolute;display:flex;align-items:center;gap:4px;box-sizing:border-box;
+  padding:0 5px;border:1px solid var(--line);border-radius:7px;background:var(--surface);
+  font:inherit;color:var(--ink-2);text-align:left;cursor:pointer;overflow:hidden}
+.kobox img{width:15px;height:15px;object-fit:contain;flex:none}
+.kodot{width:11px;height:11px;border-radius:50%;flex:none}
+.kobox b{font-size:11px;font-weight:800;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.kobox span{margin-left:auto;font-size:11px;font-weight:800;color:var(--ink)}
+.kowin{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.kowin b{color:var(--ink)}
+.koout{opacity:.5}
+.kowait{border-style:dashed;cursor:default}
+.kochamp{background:var(--gold-soft);border-color:var(--gold);justify-content:center}
+.phaserow{display:flex;gap:8px;align-items:center;padding:12px 0 2px;flex-wrap:wrap}
+.phasesel{flex:1;min-width:150px;appearance:none;-webkit-appearance:none;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:999px;padding:8px 30px 8px 14px;font:inherit;font-size:13px;font-weight:700;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .tabrail{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:12px 0 2px;-webkit-overflow-scrolling:touch}
 .tabrail::-webkit-scrollbar{display:none}
 .tab{
@@ -511,6 +535,7 @@ td.pts{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:15
 "use strict";
 /* ───────── data ───────── */
 var DATA = JSON.parse(document.getElementById("app-data").textContent);
+DATA.matches.forEach(function(m){ m.ffkFinal = m.status === "ft" });
 var TEMPLATE = null, artifactCap = null, downloadsCap = null, dirty = false;
 var STANDALONE = true;
 
@@ -794,6 +819,107 @@ function api(path, opts){
   });
 }
 
+/* ---------------- notifications ----------------
+   A ping when a match kicks off and when a goal goes in, the way SofaScore does
+   it. Nothing is ever sent without the person asking for it first, and each
+   thing is only ever announced once. */
+var NOTIF = lsGet("kf.notif", null) || {on:false,kick:true,goal:true,ht:false,ft:true,mine:false};
+var notifSeen = {}, notifReady = false;
+/* Already allowed at the browser level and never set up in here: take that as a
+   yes, rather than showing somebody a screen of switches that are all off. */
+if(lsGet("kf.notif",null)===null && typeof Notification!=="undefined" && Notification.permission==="granted"){
+  NOTIF.on = true; lsSet("kf.notif", NOTIF);
+}
+
+function notifSupported(){ return typeof Notification !== "undefined" }
+function notifState(){ return notifSupported() ? Notification.permission : "unsupported" }
+function notifSave(){ lsSet("kf.notif", NOTIF) }
+
+function notifAsk(){
+  if(!notifSupported()){ toast(LANG==="pa"?"E telefon aki no ta permití notifikashon":"This phone cannot show notifications"); return }
+  try{
+    Notification.requestPermission().then(function(perm){
+      NOTIF.on = perm === "granted"; notifSave();
+      toast(NOTIF.on ? (LANG==="pa"?"Notifikashon ta sendí":"Notifications are on")
+                     : (LANG==="pa"?"Notifikashon ta blokiá":"Notifications are blocked"));
+      render();
+    }).catch(function(){});
+  }catch(e){}
+}
+
+function notifShow(title, body, tag){
+  if(!NOTIF.on || notifState() !== "granted") return;
+  var opt = {body:body, tag:tag, icon:"./icon-192.png", badge:"./icon-96.png",
+             lang:LANG==="pa"?"pap":"en", data:{u:location.href}};
+  try{
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready.then(function(reg){
+        if(reg && reg.showNotification) reg.showNotification(title, opt);
+        else new Notification(title, opt);
+      }).catch(function(){ try{ new Notification(title, opt) }catch(e){} });
+    } else new Notification(title, opt);
+  }catch(e){}
+}
+
+function notifMine(m){
+  if(!NOTIF.mine) return true;
+  var f = (typeof FAN !== "undefined" && FAN && FAN.clubs) || [];
+  return f.indexOf(m.home) >= 0 || f.indexOf(m.away) >= 0;
+}
+
+function notifMatch(m, prev, next){
+  if(!NOTIF.on || !notifMine(m)) return;
+  var H = club(m.home).short, A = club(m.away).short, name = H + " - " + A;
+  var score = next.hs + " - " + next.as;
+  var min = next.status === "ht" ? "HT" : minuteLabel(next);
+  function once(kind, extra){
+    var tag = m.id + ":" + kind + (extra || "");
+    if(notifSeen[tag]) return false;
+    notifSeen[tag] = 1; return true;
+  }
+  var wasLive = prev.status === "live" || prev.status === "ht";
+  if(NOTIF.kick && !wasLive && next.status === "live" && !next.confirmed && once("kick"))
+    notifShow((LANG==="pa"?"E partido a kuminsá":"Kick off") + ": " + name,
+              LANG==="pa"?"Sigui e partido bibu":"Follow it live", m.id);
+  if(NOTIF.goal && (next.hs + next.as) > (prev.hs + prev.as) && once("goal", ":" + next.hs + "-" + next.as))
+    notifShow("\u26BD " + name + "   " + score, min, m.id);
+  if(NOTIF.ht && next.status === "ht" && prev.status !== "ht" && once("ht"))
+    notifShow((LANG==="pa"?"Mitar tempo":"Half time") + ": " + name + "   " + score, "HT", m.id);
+  if(NOTIF.ft && next.confirmed && !prev.confirmed && once("ft"))
+    notifShow((LANG==="pa"?"Final":"Full time") + ": " + name + "   " + score,
+              LANG==="pa"?"Resultado final":"Final score", m.id);
+}
+
+function notifCard(){
+  if(!notifSupported()) return '';
+  var st = notifState();
+  var h = '<div class="card" style="padding:14px"><div class="eyebrow">'+esc(LANG==="pa"?"Notifikashon":"Notifications")+'</div>';
+  if(st !== "granted"){
+    h += '<p class="muted" style="font-size:13px;margin:8px 0">'+esc(LANG==="pa"
+      ? "Haña un avis ora un partido kuminsá i ora un gol kai."
+      : "Get a ping when a match kicks off and when a goal goes in.")+'</p>';
+    if(st === "denied")
+      h += '<p class="muted" style="font-size:12px;margin:0">'+esc(LANG==="pa"
+        ? "Bo a blokia nan. Habri e seting di e navegador pa permiti nan bèk."
+        : "You blocked them. Allow them again in your browser settings.")+'</p>';
+    else
+      h += '<div class="btnrow"><button class="btn" data-act="notifask">'+esc(LANG==="pa"?"Sendé notifikashon":"Turn on notifications")+'</button></div>';
+    return h + '</div>';
+  }
+  function row(k, label){
+    return '<label style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:14px;font-weight:600;color:var(--ink)">'+
+      '<input type="checkbox" data-notif="'+k+'" style="width:auto"'+(NOTIF[k]?' checked':'')+'> '+esc(label)+'</label>';
+  }
+  h += row("on",   LANG==="pa"?"Notifikashon sendí":"Notifications on");
+  h += row("kick", LANG==="pa"?"Ora e partido kuminsá":"When a match kicks off");
+  h += row("goal", LANG==="pa"?"Ora un gol kai":"When a goal goes in");
+  h += row("ht",   LANG==="pa"?"Mitar tempo":"Half time");
+  h += row("ft",   LANG==="pa"?"Resultado final":"Full time");
+  h += row("mine", LANG==="pa"?"Solamente mi klubnan":"Only my clubs");
+  h += '<div class="btnrow" style="margin-top:6px"><button class="btn ghost sm" data-act="notiftest">'+esc(LANG==="pa"?"Purba un":"Send a test")+'</button></div>';
+  return h + '</div>';
+}
+
 /* Matches that could plausibly be in progress, so we only poll when it matters. */
 function liveWindow(){
   var t = today(), n = Date.now();
@@ -816,9 +942,17 @@ function applyLive(feed){
   var changed = false;
   LIVE.at = Date.now();
   feed.matches.forEach(function(x){
+    var prevX = LIVE.byId[x.id] || { status:"sched", hs:0, as:0, confirmed:false };
     LIVE.byId[x.id] = x;
     var m = DATA.matches.filter(function(y){ return y.id === x.id })[0];
     if(!m) return;
+    /* The very first poll of a session is only a baseline: nobody wants eight
+       pings the moment they open the app. */
+    if(notifReady) try{ notifMatch(m, prevX, x) }catch(e){}
+    /* A score the referee has signed off yields to the federation's own final
+       once they publish one. A match still in progress cannot clash with them,
+       so the live overlay always wins there. */
+    if(m.ffkFinal && x.confirmed) return;
     var was = m.status + "|" + m.hs + "|" + m.as + "|" + m.minute;
     m.status = x.status === "ht" ? "live" : x.status;
     m.ht = x.status === "ht";
@@ -835,6 +969,7 @@ function applyLive(feed){
     }
     if(was !== m.status + "|" + m.hs + "|" + m.as + "|" + m.minute) changed = true;
   });
+  notifReady = true;
   return changed;
 }
 
@@ -842,21 +977,37 @@ function applyLive(feed){
    the last few hours, so without this the table would forget a result the moment
    it went cold. */
 var OURRES = null;
+
+/* Which finals came from the federation's own file, recorded before any of our
+   own scores are laid on top. Without this there is no way to tell, later, who
+   a final score belongs to. */
+function stampFFK(d){
+  ((d && d.matches) || []).forEach(function(m){ m.ffkFinal = m.status === "ft" });
+}
+
+/* Our referee scores fill the gap until the federation publishes. The moment
+   their file carries a final for a match, theirs is the official one and takes
+   over, so a referee's slip corrects itself instead of sitting on the screen. */
+function applyOurResults(){
+  if(!Array.isArray(OURRES)) return false;
+  var byId = {};
+  DATA.matches.forEach(function(m){ byId[m.id]=m });
+  var changed = false;
+  OURRES.forEach(function(r){
+    var m = byId[r.id]; if(!m || m.ffkFinal) return;
+    if(m.status!=="ft" || m.hs!==r.hs || m.as!==r.as){
+      m.status="ft"; m.hs=r.hs; m.as=r.as; m.ours=true; changed=true;
+    } else { m.ours=true; }
+  });
+  return changed;
+}
+
 function loadResults(){
   if(!API || OURRES==="loading") return;
   OURRES="loading";
   api("/results").then(function(j){
     OURRES = j.results || [];
-    var byId = {};
-    DATA.matches.forEach(function(m){ byId[m.id]=m });
-    var changed = false;
-    OURRES.forEach(function(r){
-      var m = byId[r.id]; if(!m) return;
-      if(m.status!=="ft" || m.hs!==r.hs || m.as!==r.as){
-        m.status="ft"; m.hs=r.hs; m.as=r.as; m.ours=true; changed=true;
-      } else { m.ours=true; }
-    });
-    if(changed) render();
+    if(applyOurResults()) render();
   }).catch(function(){ OURRES=[] });
 }
 
@@ -1163,6 +1314,132 @@ function koWinner(m){
   if(m.as>m.hs) return m.away;
   return "";
 }
+/* The tree itself. Which tie feeds which is read out of the data: for every tie
+   in a round we look for the earlier tie its two clubs came through, so a line
+   is only ever drawn where the results say so. Nothing is assumed about who
+   meets whom next. */
+function koTree(divId){
+  var rounds = koRounds(divId);
+  if(!rounds.length) return [];
+  for(var i = rounds.length - 1; i > 0; i--){
+    var parent = rounds[i], child = rounds[i-1];
+    var order = [], used = {};
+    parent.matches.forEach(function(pm){
+      [pm.home, pm.away].forEach(function(cid){
+        for(var k = 0; k < child.matches.length; k++){
+          var cm = child.matches[k];
+          if(used[cm.id]) continue;
+          if(cm.home === cid || cm.away === cid){ order.push(cm); used[cm.id] = 1; return }
+        }
+      });
+    });
+    child.matches.forEach(function(cm){ if(!used[cm.id]){ order.push(cm); used[cm.id] = 1 } });
+    child.matches = order;
+  }
+  return rounds;
+}
+
+var SLOT_H = 26, TIE_H = SLOT_H * 2 + 3, TIE_GAP = 16, COL_W = 132, COL_GAP = 26, HEAD_H = 22;
+
+function koSlot(m, home, x, y){
+  var id = home ? m.home : m.away, c = club(id);
+  var sc = m.status === "ft" || m.status === "live" ? (home ? m.hs : m.as) : "";
+  var won = koWinner(m) === id, out = m.status === "ft" && !won;
+  return '<button class="kobox'+(won?' kowin':'')+(out?' koout':'')+'" data-match="'+esc(m.id)+'" '+
+    'style="left:'+x+'px;top:'+y+'px;width:'+COL_W+'px;height:'+SLOT_H+'px">'+
+    (c.logo?'<img src="'+esc(c.logo)+'" alt="">':'<i class="kodot" style="background:'+esc(c.c1||"#888")+'"></i>')+
+    '<b>'+esc(c.short||c.name||"")+'</b><span>'+sc+'</span></button>';
+}
+/* A club that is through but whose next tie has not been drawn yet. We park it
+   in the next column on its own, with no line joining it to anybody, because
+   the opponent is genuinely not known. */
+function koWaiting(id, x, y){
+  var c = club(id);
+  return '<span class="kobox kowait" style="left:'+x+'px;top:'+y+'px;width:'+COL_W+'px;height:'+SLOT_H+'px">'+
+    (c.logo?'<img src="'+esc(c.logo)+'" alt="">':'<i class="kodot" style="background:'+esc(c.c1||"#888")+'"></i>')+
+    '<b>'+esc(c.short||c.name||"")+'</b></span>';
+}
+
+function koBracket(divId){
+  var rounds = koTree(divId);
+  if(!rounds.length) return '';
+
+  var ys = [];
+  ys[0] = rounds[0].matches.map(function(m, j){ return HEAD_H + j * (TIE_H + TIE_GAP) });
+  for(var r = 1; r < rounds.length; r++){
+    ys[r] = rounds[r].matches.map(function(m, j){
+      var a = ys[r-1][2*j], b = ys[r-1][2*j+1];
+      if(a === undefined) a = ys[r-1][j] !== undefined ? ys[r-1][j] : HEAD_H;
+      if(b === undefined) b = a;
+      return (a + b) / 2;
+    });
+  }
+
+  var last = rounds[rounds.length-1];
+  var allDone = last.matches.every(function(m){ return m.status === "ft" && koWinner(m) });
+  var waitCol = null;
+  if(allDone && last.matches.length > 1){
+    waitCol = { name: koRoundName(Math.ceil(last.matches.length / 2)),
+                slots: last.matches.map(function(m, j){ return { id: koWinner(m), y: ys[rounds.length-1][j] } }) };
+  }
+  var champ = allDone && last.matches.length === 1 ? koWinner(last.matches[0]) : "";
+
+  var cols = rounds.length + (waitCol ? 1 : 0) + (champ ? 1 : 0);
+  var W = cols * COL_W + (cols - 1) * COL_GAP;
+  var H = HEAD_H + rounds[0].matches.length * (TIE_H + TIE_GAP);
+
+  var nodes = '', heads = '', lines = '';
+  rounds.forEach(function(R2, r){
+    var x = r * (COL_W + COL_GAP);
+    heads += '<span class="kohead" style="left:'+x+'px;width:'+COL_W+'px">'+esc(R2.name)+'</span>';
+    R2.matches.forEach(function(m, j){
+      var y = ys[r][j];
+      nodes += koSlot(m, true, x, y) + koSlot(m, false, x, y + SLOT_H + 3);
+      /* elbow from this tie across to the tie it feeds */
+      if(r + 1 < rounds.length){
+        var pj = Math.floor(j / 2), py = ys[r+1][pj];
+        if(py !== undefined){
+          var x1 = x + COL_W, x2 = x + COL_W + COL_GAP;
+          var y1 = y + TIE_H / 2, y2 = py + TIE_H / 2, mx = x1 + COL_GAP / 2;
+          lines += '<polyline points="'+x1+','+y1+' '+mx+','+y1+' '+mx+','+y2+' '+x2+','+y2+'"/>';
+        }
+      }
+    });
+  });
+  if(waitCol){
+    var wx = rounds.length * (COL_W + COL_GAP);
+    heads += '<span class="kohead" style="left:'+wx+'px;width:'+COL_W+'px">'+esc(waitCol.name)+'</span>';
+    waitCol.slots.forEach(function(sl){
+      nodes += koWaiting(sl.id, wx, sl.y + (TIE_H - SLOT_H) / 2);
+      var x1 = wx - COL_GAP, yy = sl.y + TIE_H / 2;
+      lines += '<polyline points="'+x1+','+yy+' '+wx+','+yy+'"/>';
+    });
+  }
+  if(champ){
+    var cx = (rounds.length + (waitCol ? 1 : 0)) * (COL_W + COL_GAP);
+    heads += '<span class="kohead" style="left:'+cx+'px;width:'+COL_W+'px">'+esc(LANG==="pa"?"Kampion":"Champion")+'</span>';
+    nodes += '<span class="kobox kowin kochamp" style="left:'+cx+'px;top:'+(ys[rounds.length-1][0] + (TIE_H - SLOT_H)/2)+'px;width:'+COL_W+'px;height:'+SLOT_H+'px">'+
+      '\u{1F3C6} <b>'+esc(club(champ).short||club(champ).name)+'</b></span>';
+    var lx = cx - COL_GAP, ly = ys[rounds.length-1][0] + TIE_H / 2;
+    lines += '<polyline points="'+lx+','+ly+' '+cx+','+ly+'"/>';
+  }
+
+  return '<div class="card kowrap"><div class="kobracket" style="width:'+W+'px;height:'+H+'px">'+
+    '<svg class="kolines" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" aria-hidden="true">'+lines+'</svg>'+
+    heads + nodes + '</div></div>';
+}
+
+/* Who is through, in words, under the tree. */
+function koThrough(divId){
+  var rounds=koRounds(divId);
+  if(!rounds.length) return '';
+  var last=rounds[rounds.length-1];
+  var thru=last.matches.map(koWinner).filter(Boolean);
+  if(!thru.length) return '';
+  return '<p class="muted" style="font-size:12px;margin:10px 2px 0">'+
+    esc(LANG==="pa"?"Pasa: ":"Through: ")+esc(thru.map(function(id){return club(id).short}).join(", "))+'</p>';
+}
+
 function koCard(divId){
   var rounds=koRounds(divId);
   if(!rounds.length) return '';
@@ -1498,6 +1775,21 @@ function divTabs(extraAll){
 function groupTabs(divId){
   var gs=groupsOf(divId); if(gs.length<2) return '';
   var cur=activeGroup(divId);
+  /* Eight poule chips in a row is a wall of buttons nobody reads. Past four
+     they go into a dropdown, and the knock out keeps a button of its own
+     because that is the one people are looking for. */
+  if(gs.length>4){
+    var ko=gs.filter(function(g){ return g[0]==="__ko" })[0];
+    var rest=gs.filter(function(g){ return g[0]!=="__ko" });
+    var h='<div class="phaserow">';
+    if(ko) h+='<button class="tab" data-grp="__ko" aria-pressed="'+(cur==="__ko")+'">'+esc(ko[1])+'</button>';
+    h+='<select class="phasesel" data-grpsel aria-label="'+esc(LANG==="pa"?"Skohe poule":"Pick a poule")+'">'+
+      (cur==="__ko"?'<option value="__ko" selected>'+esc(LANG==="pa"?"Skohe poule":"Pick a poule")+'</option>':'')+
+      rest.map(function(g){
+        return '<option value="'+esc(g[0])+'"'+(g[0]===cur?' selected':'')+'>'+esc(g[1])+'</option>';
+      }).join("")+'</select></div>';
+    return h;
+  }
   return '<div class="tabrail">'+gs.map(function(g){
     return '<button class="tab" data-grp="'+esc(g[0])+'" aria-pressed="'+(g[0]===cur)+'">'+esc(g[1])+'</button>';
   }).join("")+'</div>';
@@ -1720,7 +2012,8 @@ function viewTable(){
     hk+='<div class="sechead" style="margin:0 0 4px"><h2 style="font-size:16px">'+esc(d.name)+'</h2>'+
        '<span class="sub">'+esc(LANG==="pa"?"Knock out":"Knockout")+'</span>'+
        (d.status==="live"?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
-    hk+=koCard(R.div);
+    hk+=koBracket(R.div);
+    if(!/kowait/.test(hk)) hk+=koThrough(R.div);
     hk+='<p class="muted" style="font-size:11.5px;margin:10px 2px">'+
       esc(LANG==="pa"?"Den knock out no tin tabel: ken gana ta sigui, ken perde ta kaba."
                      :"A knockout has no table: the winner goes through and the loser is out.")+'</p>';
@@ -2417,6 +2710,8 @@ function viewFan(){
   var h='<div class="sechead"><h2>'+esc(T("fan"))+'</h2><span class="sub">'+esc(T("fanIntro"))+'</span></div>';
   h+=myHero();
   h+=fanBoard();
+  h+='<div class="sechead" style="margin-top:14px"><h2 style="font-size:15px">'+esc(LANG==="pa"?"Notifikashon":"Notifications")+'</h2></div>';
+  h+=notifCard();
   h+='<div class="sechead"><h2 style="font-size:15px">'+esc(T("favourites"))+'</h2>'+
      '<button class="more" data-act="openpicker">'+esc(T("followMore"))+'</button></div>';
   h+='<div class="card">'+(FAN.clubs.length?FAN.clubs.map(function(id){
@@ -3688,6 +3983,17 @@ function render(){
   if(document.querySelector(".daterail")){ centreDay(railReady); railReady=true }
   else railReady=false;
   if(document.getElementById("gbtn")){ gLoad(); gPaint(); }
+  /* A bracket is wider than a phone once the quarter finals exist, so open it on
+     the round the cup has actually reached rather than on the first round. */
+  (function(){
+    var w=document.querySelector(".kowrap");
+    if(!w || w.scrollWidth<=w.clientWidth) return;
+    var live=w.querySelector(".kobox:not(.kowin):not(.koout):not(.kowait)");
+    var to=live||w.querySelector(".kowait")||w.querySelector(".kochamp");
+    if(!to) return;
+    var x=to.offsetLeft+to.offsetWidth/2-w.clientWidth/2;
+    w.scrollLeft=Math.max(0,x);
+  })();
 }
 
 /* ───────── theme ───────── */
@@ -3700,6 +4006,10 @@ function applyTheme(){
 
 /* shrink an uploaded advert image to a data URI the app can carry */
 document.addEventListener("change",function(ev){
+  var nb=ev.target.closest&&ev.target.closest("[data-notif]");
+  if(nb){ NOTIF[nb.getAttribute("data-notif")]=!!nb.checked; notifSave(); return }
+  var sel=ev.target.closest&&ev.target.closest("[data-grpsel]");
+  if(sel){ if(sel.value && sel.value!=="__ko"){ curGroup[R.div]=sel.value; render() } return }
   var f=ev.target;
   if(!f||!f.getAttribute||!f.getAttribute("data-imgfor")) return;
   var key=f.getAttribute("data-imgfor"), file=f.files&&f.files[0];
@@ -3903,6 +4213,13 @@ document.addEventListener("click",function(ev){
       }).catch(function(e){ toast(e.message) });
       break;
     }
+    case "notifask": notifAsk(); break;
+    case "notiftest":
+      if(notifState()!=="granted"){ toast(LANG==="pa"?"Sendé nan promé":"Turn them on first"); break }
+      NOTIF.on=true; notifSave();
+      notifShow("\u26BD 599 Scores", LANG==="pa"?"Asina un gol ta yega serka bo":"This is how a goal will reach you", "test");
+      toast(LANG==="pa"?"Mandá":"Sent");
+      break;
     case "refht": {
       var hid=a.getAttribute("data-m");
       refSend("/ref/match/"+hid+"/ht",{}).then(function(r){
@@ -4201,9 +4518,12 @@ function applyRemote(remote){
   var next=JSON.parse(JSON.stringify(remote));
   MINE.forEach(function(k){ if(have[k]&&(!next[k]||!next[k].length)) next[k]=have[k] });
   next.fromRemote=true;
+  stampFFK(next);
   DATA=next; reindex(); lsSet("kf.data",DATA);
-  /* A fresh data.json is the pre match picture. Put the live overlay back on
-     top of it, or a refresh during a game wipes the score off the screen. */
+  /* A fresh data.json is the pre match picture. Put our own scores and the live
+     overlay back on top of it, or a refresh mid game wipes the score off the
+     screen and a result the referee sent in disappears until the next reload. */
+  applyOurResults();
   var keep=[];
   for(var k in LIVE.byId) keep.push(LIVE.byId[k]);
   if(keep.length) applyLive({ matches: keep });
