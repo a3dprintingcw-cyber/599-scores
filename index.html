@@ -291,6 +291,10 @@ a{color:var(--accent);text-decoration:none}
 .adthumb{width:74px;height:40px;object-fit:cover;border-radius:7px;background:var(--surface-2,var(--line));flex:0 0 74px}
 .imgfield{display:grid;gap:8px}
 .imgprev img{width:100%;border-radius:10px;display:block}
+.chipwrap{display:flex;flex-wrap:wrap;gap:6px;max-height:210px;overflow-y:auto}
+.pick2{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;
+  padding:7px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.pick2:hover{background:var(--accent-soft);border-color:var(--accent)}
 .avat{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;background:var(--surface-2)}
 .avat.sm{width:22px;height:22px}
 .avin{width:46px;height:46px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
@@ -1066,6 +1070,8 @@ function applyLive(feed){
     var was = m.status + "|" + m.hs + "|" + m.as + "|" + m.minute;
     m.status = x.status === "ht" ? "live" : x.status;
     m.ht = x.status === "ht";
+    if(x.status === "aband") m.status = "aband";
+    m.note = x.note || "";
     m.h1At = x.h1At || null;
     m.h2At = x.h2At || null;
     m.minute = x.minute;
@@ -1074,7 +1080,8 @@ function applyLive(feed){
     m.unofficial = !x.confirmed;
     if(x.events && x.events.length){
       m.events = x.events.map(function(e){
-        return { min: e.min, t: e.type, team: e.team, pname: e.player || "" };
+        return { min: e.min, t: e.type, team: e.team, pname: e.player || "",
+                 assist: e.assist || "", id: e.id };
       });
     }
     if(was !== m.status + "|" + m.hs + "|" + m.as + "|" + m.minute) changed = true;
@@ -1655,21 +1662,71 @@ function zoneClass(divId,pos,total){
 function convLeader(a){
   return (a||[]).map(function(r){ return {id:"",name:r[0],club:r[1],v:r[2],pos:""} });
 }
+/* Goals our referees recorded for matches the federation has not published a
+   final for yet. Those are the ones their chart cannot know about, and counting
+   only those is what keeps a goal from being counted twice. */
+function pendingScorers(divId){
+  var g={}, a={}, cl={};
+  DATA.matches.forEach(function(m){
+    if(divId && m.div!==divId) return;
+    if(m.ffkFinal) return;
+    if(m.status!=="ft" && m.status!=="live") return;
+    (m.events||[]).forEach(function(e){
+      if(e.t!=="goal" && e.t!=="pen") return;
+      if(e.pname){ g[e.pname]=(g[e.pname]||0)+1; cl[e.pname]=cl[e.pname]||e.team }
+      if(e.assist){ a[e.assist]=(a[e.assist]||0)+1; cl[e.assist]=cl[e.assist]||e.team }
+    });
+  });
+  return {g:g, a:a, club:cl};
+}
+/* Lay ours on top of the federation's chart, adding to a name already there
+   rather than showing the same player twice. */
+function mergeChart(rows, counts, club){
+  var out=rows.map(function(r){ return {id:r.id,name:r.name,club:r.club,pos:r.pos,v:r.v} });
+  Object.keys(counts).forEach(function(n){
+    var key=String(n).trim().toLowerCase();
+    var hit=null;
+    for(var i=0;i<out.length;i++){ if(String(out[i].name).trim().toLowerCase()===key){ hit=out[i]; break } }
+    if(hit){ hit.v+=counts[n]; hit.ours=true }
+    else out.push({id:"",name:n,club:club[n]||"",pos:"",v:counts[n],ours:true});
+  });
+  return out.sort(function(x,y){ return y.v-x.v || String(x.name).localeCompare(String(y.name)) });
+}
+
 function statsFor(divId){
   var L=DATA.leaders&&DATA.leaders[divId];
-  if(L) return {stored:true,goals:convLeader(L.goals),assists:convLeader(L.assists),
-                clean:convLeader(L.clean),yc:convLeader(L.yc),rc:convLeader(L.rc),
-                mins:convLeader(L.mins),ga:[],rawG:{},rawA:{}};
+  if(L){
+    var pend=pendingScorers(divId);
+    return {stored:true,
+            goals:mergeChart(convLeader(L.goals), pend.g, pend.club),
+            assists:mergeChart(convLeader(L.assists), pend.a, pend.club),
+            clean:convLeader(L.clean),yc:convLeader(L.yc),rc:convLeader(L.rc),
+            mins:convLeader(L.mins),ga:[],rawG:{},rawA:{}};
+  }
   var g={},a={},yc={},rc={},apps={};
+  /* Referee entered goals carry a name, not one of our player ids, because most
+     of these players are in no squad file we hold. They are counted by name, in
+     their own maps, and merged into the chart below. */
+  var gn={},an={},nclub={};
   DATA.matches.forEach(function(m){
     if(divId && m.div!==divId) return;
     if(m.status!=="ft" && m.status!=="live") return;
     (m.events||[]).forEach(function(e){
-      if(e.t==="goal"||e.t==="pen"){ g[e.p]=(g[e.p]||0)+1; if(e.a) a[e.a]=(a[e.a]||0)+1; }
-      else if(e.t==="yc") yc[e.p]=(yc[e.p]||0)+1;
-      else if(e.t==="rc") rc[e.p]=(rc[e.p]||0)+1;
+      var byName = !e.p && e.pname;
+      if(e.t==="goal"||e.t==="pen"){
+        if(byName){ gn[e.pname]=(gn[e.pname]||0)+1; nclub[e.pname]=nclub[e.pname]||e.team;
+                    if(e.assist){ an[e.assist]=(an[e.assist]||0)+1; nclub[e.assist]=nclub[e.assist]||e.team } }
+        else { g[e.p]=(g[e.p]||0)+1; if(e.a) a[e.a]=(a[e.a]||0)+1 }
+      }
+      else if(e.t==="yc"){ if(!byName) yc[e.p]=(yc[e.p]||0)+1 }
+      else if(e.t==="rc"){ if(!byName) rc[e.p]=(rc[e.p]||0)+1 }
     });
   });
+  function byNameList(map){
+    return Object.keys(map).map(function(n){
+      return {id:"", name:n, club:nclub[n]||"", pos:"", v:map[n], ours:true};
+    });
+  }
   function list(map,key){
     return Object.keys(map).map(function(id){
       var p=P[id]; return {id:id,name:p?p.name:"—",club:p?p.club:"",pos:p?p.pos:"",v:map[id]};
@@ -1678,11 +1735,18 @@ function statsFor(divId){
   var ga={};
   Object.keys(g).forEach(function(k){ga[k]=(ga[k]||0)+g[k]});
   Object.keys(a).forEach(function(k){ga[k]=(ga[k]||0)+a[k]});
+  var sortV=function(x,y){ return y.v-x.v || String(x.name).localeCompare(String(y.name)) };
+  var gAll=list(g).concat(byNameList(gn)).sort(sortV);
+  var aAll=list(a).concat(byNameList(an)).sort(sortV);
+  var gaName={};
+  Object.keys(gn).forEach(function(k){ gaName[k]=(gaName[k]||0)+gn[k] });
+  Object.keys(an).forEach(function(k){ gaName[k]=(gaName[k]||0)+an[k] });
   /* Same shape as the stored branch above, every key present. Returning a
      narrower object here made viewStats throw on st.clean.length for any
      competition the FFK has not published leader tables for, which took the
      whole render down with it. */
-  return {stored:false,goals:list(g),assists:list(a),ga:list(ga),
+  return {stored:false,goals:gAll,assists:aAll,
+          ga:list(ga).concat(byNameList(gaName)).sort(sortV),
           clean:[],mins:[],yc:list(yc),rc:list(rc),rawG:g,rawA:a};
 }
 function cleanSheetList(divId){
@@ -1869,6 +1933,12 @@ var R={page:"home",div:(DATA.divisions.filter(function(d){return d.status==="liv
 function parseHash(){
   var h=(location.hash||"#/home").replace(/^#\/?/,"").split("/");
   R.page=h[0]||"home"; R.arg=h[1]||""; R.sub=h[2]||"";
+  /* A link somebody was sent: #/m/<id> lands on the match itself. */
+  if(R.page==="m" && R.arg){
+    var want=R.arg;
+    R.page="matches"; R.arg="";
+    setTimeout(function(){ openMatch(want) }, 350);
+  }
 }
 function go(path){ location.hash="#/"+path }
 
@@ -1964,6 +2034,7 @@ function groupTabs(divId){
   }).join("")+'</div>';
 }
 function statusPill(m,plain){
+  if(m.status==="aband") return '<span class="pill">'+esc(LANG==="pa"?"Kancelá":"Abandoned")+'</span>';
   if(m.status==="live" && m.ht) return '<span class="pill live">HT</span>';
   if(m.status==="live") return '<span class="pill live"><span class="dot blink"></span>'+clockSpan(m.id)+'</span>';
   if(m.status==="ft") return '<span class="pill ft">'+esc(T("ft"))+'</span>';
@@ -2506,6 +2577,8 @@ function refPanel(m){
     h += '<div class="btnrow" style="flex-wrap:wrap">'+
       '<button class="btn ghost sm" data-act="reflineup" data-m="'+esc(m.id)+'" data-team="'+esc(m.home)+'">'+esc(club(m.home).abbr)+' XI</button>'+
       '<button class="btn ghost sm" data-act="reflineup" data-m="'+esc(m.id)+'" data-team="'+esc(m.away)+'">'+esc(club(m.away).abbr)+' XI</button>'+
+      '<button class="btn ghost sm" data-act="refpostpone" data-m="'+esc(m.id)+'" data-s="post">'+
+        esc(LANG==="pa"?"Posponé":"Postponed")+'</button>'+
       '</div>';
     return h;
   }
@@ -2542,6 +2615,10 @@ function refPanel(m){
   h += '<div class="reftap" style="grid-template-columns:1fr">'+
     '<button class="bigbtn warn" data-act="refconfirm" data-m="'+esc(m.id)+'"><b>'+esc(LANG==="pa"?"Final i konfirmá":"Full time and confirm")+'</b>'+
     '<small>'+esc(LANG==="pa"?"Despues di esaki bo no por kambia mas":"After this you cannot change it")+'</small></button></div>';
+  h += '<div class="btnrow" style="margin-top:10px;flex-wrap:wrap">'+
+    '<button class="btn ghost sm" data-act="refpostpone" data-m="'+esc(m.id)+'" data-s="aband">'+
+      esc(LANG==="pa"?"Kancelá na medio":"Abandoned")+'</button>'+
+    '</div>';
   return h;
 }
 
@@ -2567,6 +2644,8 @@ function refEventList(m){
       '<span class="who"><b>'+(ic[e.type]||"")+' '+esc(club(e.team).short)+
         (e.type==="og"?' <span class="pill">'+esc(T("ownGoal"))+'</span>':'')+'</b>'+
       '<small>'+esc(e.player||"")+'</small></span>'+
+      (/^(goal|pen|og)$/.test(e.type)?'<button class="btn ghost sm" data-act="refname2" data-m="'+esc(m.id)+'" data-e="'+esc(e.id)+'" data-team="'+esc(e.team)+'" data-min="'+esc(String(e.min))+'">'+
+        esc(e.player?(LANG==="pa"?"Kambia":"Edit"):(LANG==="pa"?"Ken?":"Who?"))+'</button>':'')+
       '<button class="btn danger sm" data-act="refundo" data-m="'+esc(m.id)+'" data-e="'+esc(e.id)+'">✕</button></div>';
   }).join("")+'</div>';
 }
@@ -3034,6 +3113,36 @@ function evLabel(e){
   if(e.t==="rc") return '<i style="width:9px;height:12px;border-radius:2px;background:var(--loss);display:inline-block"></i>';
   return "";
 }
+/* Who scored. Big buttons for the squad we know about, and a box for the many
+   players no squad file of ours has ever heard of. */
+function askScorer(mid, team, eventId, min){
+  /* The lineup he typed in is the best list of names for this match, better
+     than any squad file, so fetch it first if we do not have it yet. */
+  if(API && LINEUP[mid]===undefined){
+    LINEUP[mid]="loading";
+    api("/lineup?m="+encodeURIComponent(mid))
+      .then(function(j){ LINEUP[mid]=(j&&j.teams)||{}; askScorer(mid,team,eventId,min) })
+      .catch(function(){ LINEUP[mid]={}; askScorer(mid,team,eventId,min) });
+    return;
+  }
+  var sq=(DATA.players||[]).filter(function(x){return x.club===team});
+  var L=(LINEUP[mid]||{})[team];
+  var names=[];
+  if(L && (L.starters||[]).length) names=L.starters.concat(L.subs||[]);
+  else names=sq.map(function(x){return x.name});
+  var chips=names.slice(0,26).map(function(n){
+    return '<button class="pick2" data-act="scorerpick" data-name="'+esc(n)+'">'+esc(n)+'</button>';
+  }).join("");
+  openModal("\u26BD "+min+"\u2032 "+club(team).short+" · "+(LANG==="pa"?"Ken a mark?":"Who scored?"),
+    (chips?'<div class="chipwrap">'+chips+'</div>':'')+
+    '<div class="field" style="margin-top:10px"><label>'+esc(LANG==="pa"?"Nòmber":"Name")+'</label>'+
+      '<input id="scname" autocomplete="off" placeholder="'+esc(LANG==="pa"?"Skirbi òf primi ariba":"Type or tap above")+'"></div>'+
+    '<div class="field"><label>'+esc(LANG==="pa"?"Asistensia (opshonal)":"Assist (optional)")+'</label>'+
+      '<input id="scassist" autocomplete="off"></div>',
+    '<button class="btn" data-act="scorersave" data-m="'+esc(mid)+'" data-e="'+esc(eventId)+'">'+esc(T("save"))+'</button>'+
+    '<button class="btn ghost" data-act="closemodal">'+esc(LANG==="pa"?"Despues":"Later")+'</button>');
+}
+
 /* ───────── lineups ─────────
    Kept as the referee typed them off the match sheet. The sheet is the record,
    and most of these players are in no squad file we hold. */
@@ -3091,7 +3200,9 @@ function openMatch(id){
   if(ev.length){
     h+='<div class="hr"></div><div class="tl">'+ev.map(function(e){
       var side=e.team===m.home?"l-side":"r-side";
-      var who=pname(e.p)+(e.a?' <span class="asst">('+esc(pname(e.a))+')</span>':'');
+      var nmOf=function(id,txt){ return id?pname(id):(txt||(LANG==="pa"?"—":"—")) };
+      var who=esc(nmOf(e.p,e.pname))+
+        ((e.a||e.assist)?' <span class="asst">('+esc(nmOf(e.a,e.assist))+')</span>':'');
       var cell='<span class="ev">'+evLabel(e)+' <span>'+who+'</span></span>';
       return '<div class="tlrow '+side+'"><span class="l">'+cell+'</span><span class="min">'+e.min+"′"+'</span><span class="r">'+cell+'</span></div>';
     }).join("")+'</div>';
@@ -3111,6 +3222,10 @@ function openMatch(id){
       }).join("")+
       (m.shortNotice?'<div class="earnrow"><span class="needchip">'+esc(T("shortNotice"))+'</span></div>':'')+'</div>';
   }
+  h+='<div class="btnrow" style="margin-top:12px;justify-content:center">'+
+    '<button class="btn ghost sm" data-act="sharematch" data-m="'+esc(m.id)+'">'+
+    esc(LANG==="pa"?"Manda pa un amigu":"Share")+'</button>'+
+    matchStar(m.id)+'</div>';
   h+=lineupBlock(m);
   if(meta.length){
     h+='<div class="hr"></div><div class="card"><div class="statgrid">'+meta.map(function(x){
@@ -3524,6 +3639,29 @@ function admSettings(){
     '<div class="btnrow"><button class="btn sm" data-act="savesettings">'+esc(T("save"))+'</button></div></div>';
   /* Open next season before the federation has published a fixture for it, so
      the table is up on day one with every club on nil. */
+  /* There is no other copy of what the referees typed in. */
+  h+='<div class="card" style="padding:14px;margin-top:12px"><div class="eyebrow">'+
+    esc(LANG==="pa"?"Kopia di seguridat":"Backup")+'</div>'+
+    '<p class="muted" style="font-size:13px;margin:8px 0">'+esc(LANG==="pa"
+      ? "Baha tur loke tin riba e server: arbiternan, resultado, gol, alineashon, kuenta i number. Hasi esaki kada siman."
+      : "Download everything on the server: referees, results, goals, lineups, accounts and counts. Do this weekly.")+'</p>'+
+    '<div class="btnrow"><button class="btn sm" data-act="backupsrv">'+
+      esc(LANG==="pa"?"Baha kopia di seguridat":"Download a backup")+'</button></div></div>';
+
+  /* What an advertiser gets sent at the end of the month. */
+  if((DATA.ads||[]).length){
+    h+='<div class="card" style="padding:14px;margin-top:12px"><div class="eyebrow">'+
+      esc(LANG==="pa"?"Rapòrt pa un kliente":"Report for an advertiser")+'</div>'+
+      '<div class="frow"><div class="field"><label>'+esc(LANG==="pa"?"Kliente":"Advertiser")+'</label>'+
+        '<select id="adrid">'+DATA.ads.map(function(x){
+          return '<option value="'+esc(x.id)+'">'+esc(x.name||x.id)+'</option>';
+        }).join("")+'</select></div>'+
+      '<div class="field"><label>'+esc(LANG==="pa"?"Dianan":"Days")+'</label>'+
+        '<select id="adrdays"><option value="30">30</option><option value="7">7</option><option value="90">90</option></select></div></div>'+
+      '<div class="btnrow"><button class="btn sm" data-act="adreport">'+
+        esc(LANG==="pa"?"Baha rapòrt":"Download the report")+'</button></div></div>';
+  }
+
   h+='<div class="card" style="padding:14px;margin-top:12px"><div class="eyebrow">'+
     esc(LANG==="pa"?"Habri un temporada nobo":"Open a new season")+'</div>'+
     '<p class="muted" style="font-size:13px;margin:8px 0">'+esc(LANG==="pa"
@@ -4842,7 +4980,58 @@ document.addEventListener("click",function(ev){
           else { refApply(mid,{status:"live",hs:r.hs,as:r.as,minute:gmin}); refEvents[mid]=null }
           toast("⚽ "+gmin+"′ "+club(team).short);
           render(); pollLive();
+          /* The goal is already in. Asking who scored afterwards means the tap
+             is never slowed down and nothing is lost if he never answers. */
+          if(r && r.eventId) askScorer(mid, team, r.eventId, gmin);
         }).catch(function(e){ toast(e.message) });
+      break;
+    }
+    case "scorersave": {
+      var sm=a.getAttribute("data-m"), se=a.getAttribute("data-e");
+      var who=$("#scname"), ast=$("#scassist");
+      var nm=who?who.value.trim():"";
+      if(!nm){ closeModal(); break }
+      refSend("/ref/match/"+sm+"/name",{eventId:se,player:nm,assist:ast?ast.value.trim():""})
+        .then(function(){ refEvents[sm]=null; toast(T("saved")); closeModal(); render(); pollLive() })
+        .catch(function(e){ toast(e.message); closeModal() });
+      break;
+    }
+    /* Curacao passes things round on WhatsApp, so this is how the app travels. */
+    case "sharematch": {
+      var shid=a.getAttribute("data-m");
+      var sm2=DATA.matches.filter(function(x){return x.id===shid})[0];
+      if(!sm2) break;
+      var done=sm2.status==="ft"||sm2.status==="live";
+      var line=club(sm2.home).short+(done?" "+sm2.hs+" - "+sm2.as+" ":" v ")+club(sm2.away).short;
+      var url=location.origin+location.pathname+"#/m/"+shid;
+      var txt=line+" · 599 Scores";
+      if(navigator.share){
+        navigator.share({title:"599 Scores", text:txt, url:url}).catch(function(){});
+      } else if(navigator.clipboard){
+        navigator.clipboard.writeText(txt+"\n"+url).then(function(){
+          toast(LANG==="pa"?"Kopiá":"Copied");
+        }).catch(function(){ toast(url) });
+      } else toast(url);
+      break;
+    }
+    case "refname2": {
+      askScorer(a.getAttribute("data-m"), a.getAttribute("data-team"),
+                a.getAttribute("data-e"), a.getAttribute("data-min"));
+      break;
+    }
+    case "scorerpick": {
+      var el=$("#scname");
+      if(el){ el.value=a.getAttribute("data-name"); el.focus() }
+      break;
+    }
+    case "refpostpone": {
+      var pm=a.getAttribute("data-m"), pst=a.getAttribute("data-s");
+      var word = pst==="post" ? (LANG==="pa"?"posponé":"postponed") : (LANG==="pa"?"kancelá na medio":"abandoned");
+      if(!confirm((LANG==="pa"?"Marka e partido komo ":"Mark the match as ")+word+"?")) break;
+      var note=prompt(LANG==="pa"?"Motibu (opshonal)":"Reason (optional)","")||"";
+      refSend("/ref/match/"+pm+"/state",{status:pst,note:note})
+        .then(function(r){ refApply(pm,(r&&r.state)||{status:pst,note:note}); toast(T("saved")); render(); pollLive() })
+        .catch(function(e){ toast(e.message) });
       break;
     }
     case "refcard": {
@@ -4864,13 +5053,6 @@ document.addEventListener("click",function(ev){
           else refApply(mid3,{hs:r.hs,as:r.as});
           refEvents[mid3]=null; render(); pollLive();
         }).catch(function(e){ toast(e.message) });
-      break;
-    }
-    case "refname": {
-      var mid6=a.getAttribute("data-m");
-      var who=prompt(LANG==="pa"?"Ken a mark?":"Who scored?","");
-      if(!who) break;
-      toast(LANG==="pa"?"Wardá":"Saved");
       break;
     }
     case "refminute": {
@@ -4934,6 +5116,42 @@ document.addEventListener("click",function(ev){
     case "favp": togglePlayer(a.getAttribute("data-id")); render(); break;
     case "setprim": FAN.primary=a.getAttribute("data-id"); if(!follows(FAN.primary))FAN.clubs.push(FAN.primary); saveFan(); render(); break;
     case "favm": toggleMatch(a.getAttribute("data-id")); render(); break;
+    case "backupsrv": {
+      toast(LANG==="pa"?"Ta prepará...":"Preparing...");
+      api("/admin/export",{auth:true}).then(function(j){
+        var name="599-scores-backup-"+today()+".json";
+        dl(name, JSON.stringify(j));
+        var n=Object.keys(j.counts||{}).map(function(k){return k+" "+j.counts[k]}).join(", ");
+        toast((LANG==="pa"?"Bahá: ":"Saved: ")+name);
+        console.log("[599] backup", n);
+      }).catch(function(e){ toast(e.message) });
+      break;
+    }
+    case "adreport": {
+      var ridEl=$("#adrid"), rdEl=$("#adrdays");
+      if(!ridEl) break;
+      var rid=ridEl.value, rdays=rdEl?rdEl.value:"30";
+      var adName=((DATA.ads||[]).filter(function(x){return x.id===rid})[0]||{}).name||rid;
+      api("/admin/adreport?id="+encodeURIComponent(rid)+"&days="+encodeURIComponent(rdays),{auth:true})
+        .then(function(j){
+          var lines=[];
+          lines.push("599 Scores  -  "+(LANG==="pa"?"rapòrt di publisidat":"advertising report"));
+          lines.push(adName);
+          lines.push((LANG==="pa"?"Periodo":"Period")+": "+j.from+" .. "+j.to);
+          lines.push("");
+          lines.push((LANG==="pa"?"Biaha mustrá":"Impressions")+": "+j.views);
+          lines.push((LANG==="pa"?"Klek":"Clicks")+": "+j.clicks);
+          lines.push("CTR: "+j.ctr+"%");
+          lines.push((LANG==="pa"?"Telefon diferente den e periodo":"Different phones in the period")+": "+j.reach);
+          lines.push("");
+          lines.push((LANG==="pa"?"Dia":"Day")+",  "+(LANG==="pa"?"mustrá":"impressions")+",  "+(LANG==="pa"?"klek":"clicks"));
+          (j.rows||[]).forEach(function(r){ lines.push(r.day+",  "+r.views+",  "+r.clicks) });
+          dl("599-scores-"+String(adName).replace(/[^A-Za-z0-9]+/g,"-").toLowerCase()+"-"+today()+".csv",
+             lines.join("\n"));
+          toast(LANG==="pa"?"Bahá":"Saved");
+        }).catch(function(e){ toast(e.message) });
+      break;
+    }
     case "newseason": {
       var fromEl=$("#nsfrom"), yrEl=$("#nsyear");
       if(!fromEl||!yrEl) break;
