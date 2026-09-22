@@ -155,6 +155,16 @@ a{color:var(--accent);text-decoration:none}
   padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));padding-top:6px;
 }
 @media(min-width:900px){.bottomnav{display:none}}
+/* On a phone the page itself does not scroll: the column between the top bar
+   and the bottom bar does. A browser that hides its own toolbar while you
+   scroll, or an in app webview, used to drag the bottom bar off the screen with
+   it, so Statistika and Tabel went missing halfway down a long table. With the
+   document standing still the bar cannot move. */
+@media(max-width:899px){
+  html,body{height:100%;overflow:hidden}
+  .shell{height:100%;height:100dvh;overflow:hidden}
+  .main{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+}
 .bnav{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px;color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.01em}
 .bnav[aria-current="page"]{color:var(--accent)}
 .bnav svg{width:20px;height:20px}
@@ -1987,6 +1997,13 @@ function parseHash(){
   }
 }
 function go(path){ location.hash="#/"+path }
+/* Back to the top of whichever thing is actually scrolling: the column on a
+   phone, the window on a laptop. */
+function toTop(){
+  var col=document.querySelector(".main");
+  if(col && col.scrollHeight > col.clientHeight + 4){ col.scrollTop=0 }
+  try{ window.scrollTo(0,0) }catch(e){}
+}
 
 /* ───────── chrome ───────── */
 function renderChrome(){
@@ -2536,10 +2553,45 @@ var refMatches = null, refOpen = "";
 function refApply(mid, patch){
   if(!refMatches) return;
   var m = refMatches.filter(function(x){ return x.id === mid })[0];
-  if(!m) return;
+  if(!m){
+    /* A fixture we typed in ourselves, which the server has not put in our
+       appointment list yet. Adopt it so the panel keeps up as we tap. */
+    var o = (DATA.ownmatches||[]).filter(function(x){ return x.id === mid })[0];
+    if(!o) return;
+    m = { id:o.id, date:o.date, time:o.time||"", div:o.div, home:o.home, away:o.away,
+          venue:o.venue||"", feedStatus:"sched", state:null, own:true };
+    refMatches.push(m);
+  }
   m.state = Object.assign({ status:"sched", minute:0, hs:0, as:0, confirmed:false }, m.state || {}, patch || {});
 }
 
+
+/* Yesterday, in Curacao. The referee keeps a grace day to close a late match. */
+function yday(){ return new Date(Date.now()+TZ_OFFSET_MS-86400000).toISOString().slice(0,10) }
+
+/* What the console shows. The server's own list is the source of truth for
+   appointments, and a fixture put in by hand is added on top of it, so a game
+   typed in an hour ago is there even if the server has not re-read the fixture
+   file yet. Today first, then yesterday, and anything already closed goes to the
+   bottom so you never open a finished game by mistake. */
+function refList(){
+  var list=(refMatches||[]).slice(), have={};
+  list.forEach(function(x){ have[x.id]=1 });
+  var t=today(), y=yday();
+  (DATA.ownmatches||[]).forEach(function(o){
+    if(!o || !o.id || have[o.id]) return;
+    if(o.date!==t && o.date!==y) return;
+    list.push({ id:o.id, date:o.date, time:o.time||"", div:o.div, home:o.home, away:o.away,
+                venue:o.venue||"", feedStatus:"sched", state:null, own:true });
+    have[o.id]=1;
+  });
+  var done=function(x){ return (x.state&&x.state.confirmed) || x.feedStatus==="ft" ? 1 : 0 };
+  list.sort(function(a,b){
+    return done(a)-done(b) || String(b.date).localeCompare(String(a.date)) ||
+           String(a.time).localeCompare(String(b.time));
+  });
+  return list;
+}
 
 function viewRef(){
   if(!API) return '<div class="card"><div class="empty"><h3>'+esc(T("refConsole"))+'</h3><p>'+
@@ -2560,18 +2612,27 @@ function viewRef(){
     });
     return h + '<div class="card"><div class="empty"><p>…</p></div></div>';
   }
-  if(!refMatches.length) return h + '<div class="card"><div class="empty"><h3>'+
+  var RL = refList();
+  if(!RL.length) return h + '<div class="card"><div class="empty"><h3>'+
     esc(LANG==="pa"?"Bo no tin partido awe":"No match for you today")+'</h3><p>'+
     esc(LANG==="pa"?"E asignashon ta bini for di FFK. Si bo ta fluit awe i bo no ta mira e partido aki, papia ku e admin.":"Appointments come from the FFK. If you are officiating today and do not see it, speak to the admin.")+'</p></div></div>'
     + rewardsPanel();
 
-  var m = refMatches.filter(function(x){ return x.id === refOpen })[0] || (refMatches.length === 1 ? refMatches[0] : null);
+  /* Never open a game by itself unless it is the only one left to do. */
+  var todo = RL.filter(function(x){ return !((x.state&&x.state.confirmed) || x.feedStatus==="ft") });
+  var m = RL.filter(function(x){ return x.id === refOpen })[0] || (todo.length === 1 ? todo[0] : null);
   if(!m){
-    if(!refMatches.length) return h + rewardsPanel();
-    h += '<div class="card">' + refMatches.map(function(x){
-      return '<button class="lb" data-act="refopen" data-m="'+esc(x.id)+'"><span class="rk">'+esc(x.time||"")+'</span>'+
+    h += '<div class="card">' + RL.map(function(x){
+      var shut = (x.state&&x.state.confirmed) || x.feedStatus==="ft";
+      var when = x.date===today() ? T("today") : fmtDate(x.date,true);
+      var tag = shut ? '<span class="pill ft">'+esc(T("ft"))+'</span>'
+              : (x.state && (x.state.status==="live"||x.state.status==="ht")
+                  ? '<span class="pill live">'+esc(T("live"))+'</span>' : "");
+      return '<button class="lb" data-act="refopen" data-m="'+esc(x.id)+'"'+
+        (shut?' style="opacity:.55"':'')+'><span class="rk">'+esc(x.time||"")+'</span>'+
         '<span class="who"><b>'+esc(club(x.home).short)+' v '+esc(club(x.away).short)+'</b>'+
-        '<small>'+esc(x.venue||"")+'</small></span><span class="chev">›</span></button>';
+        '<small>'+esc(when)+(x.venue?" · "+esc(x.venue):"")+'</small></span>'+
+        tag+'<span class="chev">›</span></button>';
     }).join("") + '</div>';
     return h;
   }
@@ -4704,7 +4765,7 @@ function render(){
   }
   v.innerHTML=h;
   var key=R.page+"/"+(R.page==="matches"?"":R.arg);
-  if(key!==lastKey){ lastKey=key; adPick={}; window.scrollTo(0,0); track("view", R.page); }
+  if(key!==lastKey){ lastKey=key; adPick={}; toTop(); track("view", R.page); }
   if(document.querySelector(".daterail")){ centreDay(railReady); railReady=true }
   else railReady=false;
   if(document.getElementById("gbtn")){ gLoad(); gPaint(); }
