@@ -936,11 +936,68 @@ if(lsGet("kf.notif",null)===null && typeof Notification!=="undefined" && Notific
   NOTIF.on = true; lsSet("kf.notif", NOTIF);
 }
 
+/* ---------------- putting the app on a phone ----------------
+   Android offers to install by itself. An iPhone never does: Safari has no
+   install button anywhere on the screen, so somebody has to be told, in two
+   lines, to use Share and then Add to Home Screen. Everything the app can do on
+   an iPhone, notifications included, only works once it is added, so this is
+   not decoration. */
+function standalone(){
+  try{
+    return window.matchMedia("(display-mode: standalone)").matches ||
+           window.navigator.standalone === true;
+  }catch(e){ return false }
+}
+function isIOS(){
+  var ua=navigator.userAgent||"";
+  if(/iPad|iPhone|iPod/.test(ua)) return true;
+  /* An iPad on iPadOS says it is a Mac, and gives itself away by the touch. */
+  return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+}
+var INSTALLQ=null;                       /* Android's own install offer */
+try{
+  window.addEventListener("beforeinstallprompt", function(e){
+    e.preventDefault(); INSTALLQ=e;
+    if(!lsGet("kf.a2hs",0)) render();
+  });
+}catch(e){}
+
+function installCard(){
+  if(standalone() || lsGet("kf.a2hs",0)) return "";
+  var ios=isIOS();
+  if(!ios && !INSTALLQ) return "";
+  var body = ios
+    ? (LANG==="pa"
+        ? 'Primi <b>Share</b> abou den Safari, skohe <b>Add to Home Screen</b>, i primi <b>Add</b>. Despues e app ta habri kompletu riba bo pantaya i notifikashon ta funshoná.'
+        : 'Tap <b>Share</b> at the bottom of Safari, choose <b>Add to Home Screen</b>, then <b>Add</b>. After that it opens full screen and notifications work.')
+    : (LANG==="pa"
+        ? 'Pone 599 Scores riba bo pantaya di kas, pa bo habri e resultadonan ku un primi.'
+        : 'Put 599 Scores on your home screen so the scores are one tap away.');
+  return '<div class="card" style="margin-top:14px;padding:15px">'+
+    '<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">'+
+    '<span style="flex:1;min-width:190px">'+
+      '<b style="font-size:15px;display:block">'+esc(LANG==="pa"
+        ? "Pone e app riba bo telefon" : "Put the app on your phone")+'</b>'+
+      '<small class="muted" style="font-size:12.5px;line-height:1.55">'+body+'</small></span>'+
+    (ios ? '' : '<button class="btn sm" data-act="a2hs">'+esc(LANG==="pa"?"Instalá":"Install")+'</button>')+
+    '<button class="btn ghost sm" data-act="a2hsno">'+esc(LANG==="pa"?"No awor":"Not now")+'</button>'+
+    '</div></div>';
+}
+
 function notifSupported(){ return typeof Notification !== "undefined" }
 function notifState(){ return notifSupported() ? Notification.permission : "unsupported" }
 function notifSave(){ lsSet("kf.notif", NOTIF); pushSync(); prefsPush() }
 
 function notifAsk(){
+  /* Safari only hands out notification permission to a web app that has been
+     added to the home screen. Asking here would fail silently and look broken,
+     so say what to do instead. */
+  if(isIOS() && !standalone()){
+    toast(LANG==="pa"
+      ? "Promé pone e app riba bo pantaya di kas: Share, Add to Home Screen."
+      : "Add the app to your home screen first: Share, then Add to Home Screen.");
+    return;
+  }
   if(!notifSupported()){ toast(LANG==="pa"?"E telefon aki no ta permití notifikashon":"This phone cannot show notifications"); return }
   try{
     Notification.requestPermission().then(function(perm){
@@ -1053,9 +1110,17 @@ function notifMatch(m, prev, next){
 }
 
 function notifCard(){
+  var h0 = '<div class="card" style="padding:14px"><div class="eyebrow">'+esc(LANG==="pa"?"Notifikashon":"Notifications")+'</div>';
+  /* On an iPhone the switches only exist once the app is on the home screen.
+     Show the two steps rather than a dead button. */
+  if(isIOS() && !standalone()){
+    return h0 + '<p class="muted" style="font-size:13px;margin:8px 0 0;line-height:1.55">'+(LANG==="pa"
+      ? 'Riba iPhone notifikashon ta funshoná ora e app ta riba bo pantaya di kas. Primi <b>Share</b> abou den Safari, skohe <b>Add to Home Screen</b>, habri e app for di bo pantaya, i bin bèk aki.'
+      : 'On iPhone notifications work once the app is on your home screen. Tap <b>Share</b> at the bottom of Safari, choose <b>Add to Home Screen</b>, open it from your home screen, then come back here.')+'</p></div>';
+  }
   if(!notifSupported()) return '';
   var st = notifState();
-  var h = '<div class="card" style="padding:14px"><div class="eyebrow">'+esc(LANG==="pa"?"Notifikashon":"Notifications")+'</div>';
+  var h = h0;
   if(st !== "granted"){
     h += '<p class="muted" style="font-size:13px;margin:8px 0">'+esc(LANG==="pa"
       ? "Haña un avis ora un partido kuminsá i ora un gol kai."
@@ -2245,6 +2310,7 @@ function viewHome(){
   var st=statsFor(R.div);
   var h='';
   h+=sampleBanner();
+  h+=installCard();
   h+=myHero();
   h+=adFor("home");
   if(!FAN.primary) h+='<div class="card" style="margin-top:14px;padding:15px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">'+
@@ -5286,6 +5352,14 @@ document.addEventListener("click",function(ev){
     }
     /* A fixture for a day the federation has not published yet. Any competition,
        any date, and it survives every refresh until they publish it themselves. */
+    case "a2hs": {
+      if(INSTALLQ){
+        try{ INSTALLQ.prompt() }catch(e){}
+        INSTALLQ=null; lsSet("kf.a2hs",1); render();
+      }
+      break;
+    }
+    case "a2hsno": { lsSet("kf.a2hs",1); render(); break }
     case "ownmatch": {
       var dvs=DATA.divisions;
       var cls=DATA.clubs.slice().sort(function(a,b){return String(a.short).localeCompare(String(b.short))});
