@@ -751,14 +751,23 @@ var C={},P={},DV={};
    or not at all. They live in your published content, so a data refresh cannot
    wipe them, and they step aside the moment the federation publishes the same
    fixture so nobody sees the game twice. */
+/* When the federation finally publishes a fixture we had put in by hand, their
+   match takes over and ours steps aside. The score our referee sent in is
+   stored against our own id, so without this map it would be left behind on a
+   fixture nobody can see any more. */
+var OWNMAP={};
 function mergeOwnMatches(){
+  OWNMAP={};
   var list=DATA.ownmatches;
   if(!Array.isArray(list) || !list.length) return;
-  var have={}, key=function(m){ return m.div+"|"+m.date+"|"+m.home+"|"+m.away };
-  (DATA.matches||[]).forEach(function(m){ have[m.id]=1; have[key(m)]=1 });
+  var have={}, byKey={}, key=function(m){ return m.div+"|"+m.date+"|"+m.home+"|"+m.away };
+  (DATA.matches||[]).forEach(function(m){ have[m.id]=1; have[key(m)]=1; byKey[key(m)]=m.id });
   list.forEach(function(m){
     if(!m || !m.id || have[m.id]) return;
-    if(have[key(m)]) return;                     /* the federation has it now */
+    if(have[key(m)]){                            /* the federation has it now */
+      OWNMAP[m.id]=byKey[key(m)];
+      return;
+    }
     DATA.matches.push(Object.assign({
       md:0, group:"", venue:"", ref:"", hs:0, as:0, status:"sched",
       events:[], att:0, potm:"", officials:{ref:"",ar1:"",ar2:"",fourth:""},
@@ -1100,7 +1109,8 @@ function applyLive(feed){
   feed.matches.forEach(function(x){
     var prevX = LIVE.byId[x.id] || { status:"sched", hs:0, as:0, confirmed:false };
     LIVE.byId[x.id] = x;
-    var m = DATA.matches.filter(function(y){ return y.id === x.id })[0];
+    var want = x.id, alias = OWNMAP[x.id] || "";
+    var m = DATA.matches.filter(function(y){ return y.id === want || (alias && y.id === alias) })[0];
     if(!m) return;
     /* The very first poll of a session is only a baseline: nobody wants eight
        pings the moment they open the app. */
@@ -1153,7 +1163,8 @@ function applyOurResults(){
   DATA.matches.forEach(function(m){ byId[m.id]=m });
   var changed = false;
   OURRES.forEach(function(r){
-    var m = byId[r.id]; if(!m || m.ffkFinal) return;
+    var m = byId[r.id] || byId[OWNMAP[r.id]];
+    if(!m || m.ffkFinal) return;
     if(m.status!=="ft" || m.hs!==r.hs || m.as!==r.as){
       m.status="ft"; m.hs=r.hs; m.as=r.as; m.ours=true; changed=true;
     } else { m.ours=true; }
