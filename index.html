@@ -1812,6 +1812,10 @@ function standings(divId,mode){
   return list;
 }
 function zoneClass(divId,pos,total){
+  /* Before a ball is kicked the table is just alphabetical, so colouring the
+     top row champion and the bottom rows relegated would be saying something
+     false about real clubs. */
+  if(!matchesOf(divId).some(finished)) return "";
   var d=divOf(divId);
   if(d.type==="cup"){ return pos===1?"z-champ":(pos===2?"z-po":"") }
   if(pos===1) return d.tier===1?"z-champ":"z-champ";
