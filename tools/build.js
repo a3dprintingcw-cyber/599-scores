@@ -160,18 +160,31 @@ raw.competitions.forEach(comp => {
      surprise in the federation's data can never take the rest of the file down. */
   try {
     const mine = matches.filter(m => m.div === id);
-    const KO = /knock\s*-?\s*out|\bk\.?o\.?\b/i;
-    const koList = mine.filter(m => KO.test(m.phase || ''));
+    /* Knock out phases. The federation names them in several ways: "Fase 3 KK
+       (Knock out fase)", "Fase 4 KK (Kuart finale)", semi finals, the final. Only
+       cups have a bracket; a league's "Finale" or "Playoff Kaya 6" is not one. */
+    const KO = /knock\s*-?\s*out|\bk\.?o\.?\b|kuart|quarter|kwart|semi|octav|\bfinal/i;
+    const koList = tierOf(comp.name) ? [] : mine.filter(m => KO.test(m.phase || ''));
     if (koList.length) {
-      /* In a bracket a club plays at most once per round, so a repeat means the
-         next round has started. */
-      const sorted = koList.slice().sort((a, b) =>
-        (a.date + ' ' + (a.time || '')).localeCompare(b.date + ' ' + (b.time || '')) || a.id.localeCompare(b.id));
-      let round = 1, seen = {};
-      sorted.forEach(m => {
-        if (seen[m.home] || seen[m.away]) { round++; seen = {} }
-        seen[m.home] = 1; seen[m.away] = 1;
-        m.ko = true; m.round = round;
+      /* Each named phase is its own round, in the order they are played. Inside a
+         phase, a club playing twice means the next round has started. */
+      const when = m => m.date + ' ' + (m.time || '');
+      const byPhase = {};
+      koList.forEach(m => (byPhase[m.phase] = byPhase[m.phase] || []).push(m));
+      const phaseOrder = Object.keys(byPhase).sort((a, b) => {
+        const fa = byPhase[a].map(when).sort()[0], fb = byPhase[b].map(when).sort()[0];
+        return fa.localeCompare(fb);
+      });
+      let round = 0;
+      phaseOrder.forEach(ph => {
+        const sorted = byPhase[ph].slice().sort((a, b) => when(a).localeCompare(when(b)) || a.id.localeCompare(b.id));
+        round++;
+        let seen = {};
+        sorted.forEach(m => {
+          if (seen[m.home] || seen[m.away]) { round++; seen = {} }
+          seen[m.home] = 1; seen[m.away] = 1;
+          m.ko = true; m.round = round;
+        });
       });
     }
 
@@ -220,8 +233,13 @@ raw.competitions.forEach(comp => {
     console.log('[build] cup shape skipped for', id, e.message);
   }
 
+  /* Adrian's call: the second phase of the Kopa is shown as the Knockout, not
+     "Fase 2". The id stays the same, so stored results and settings still match. */
+  const shown = !tierOf(comp.name) && /\bfase\s*2\b/i.test(comp.name)
+    ? comp.name.replace(/\bfase\s*2\b/i, 'Knockout') : comp.name;
   divisions.push({
-    id, name: comp.name, short: shortOf(comp.name), en: comp.name,
+    id, name: shown, short: shortOf(shown), en: shown,
+    ...(shown !== comp.name ? { phase: 'Knockout' } : {}),
     type: tierOf(comp.name) ? 'league' : 'cup', season: comp.year,
     status, tier: tierOf(comp.name), cfu: tierOf(comp.name) === 1 ? 2 : 0, groups
   });
