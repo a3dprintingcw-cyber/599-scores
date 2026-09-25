@@ -15,7 +15,11 @@ const editorial = fs.existsSync(EDIT) ? JSON.parse(fs.readFileSync(EDIT, 'utf8')
 const PALETTE = ['#1B4FD8','#C8102E','#0E7A46','#E8B60A','#6B3FA0','#E2711D','#1F7A8C','#B01B2E','#2A3C8F','#7A1F4F','#0E3A6B','#B33A1A','#5A3B8C','#146B8C','#8C6B1F','#2B2B2B'];
 const hash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); };
 
-const stripSuffix = n => n.replace(/\s+(Terser|Segunda|Femenino)$/i, '');
+/* The federation marks a club's second side by the division it plays in
+   ("Jong Colombia Terser"). Adrian's call: show it the way clubs here write it,
+   with a Roman II, so the two Jong Colombias can be told apart. The women's
+   sides have their own competition, so their suffix is simply dropped. */
+const stripSuffix = n => n.replace(/\s+(Terser|Segunda)$/i, ' II').replace(/\s+Femenino$/i, '');
 function abbrev(name) {
   const clean = name.replace(/^(C\.?R\.?K\.?S\.?V\.?|R\.?K\.?S\.?V\.?|S\.?V\.?|F\.?C\.?|C\.?D\.?|U\.?D\.?|C\.?V\.?V\.?|C\.?V\.?C\.?|S\.?C\.?|C\.?H\.?|C\.?S\.?D\.?)\s+/i, '').trim();
   const words = clean.split(/\s+/).filter(w => w.length > 1);
