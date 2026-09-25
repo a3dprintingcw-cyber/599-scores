@@ -213,19 +213,26 @@ raw.competitions.forEach(comp => {
         const r = row[c];
         return [i + 1, c, r.p, r.w, r.l, r.d, r.gf, r.ga, r.pts, r.gf - r.ga];
       });
-      /* Name it after the letter missing from the poules that are listed. */
-      const letters = groups.map(g => (/^poule([A-Z])$/.exec(g[0]) || [])[1]).filter(Boolean);
+      /* Name it after the letter missing from the groups that are listed, in the
+         same style: Group X and Group Z are missing Group Y, Poule A to H with no D
+         are missing Poule D. The gap is looked for between the first and last
+         letter the federation uses, not from A. */
+      const named = groups.map(g => /^(poule|group)([A-Z])$/.exec(g[0])).filter(Boolean);
+      const pre = named.length ? named[0][1] : 'poule';
+      const word = pre === 'group' ? 'Group' : 'Poule';
+      const letters = named.filter(x => x[1] === pre).map(x => x[2]);
       let letter = '';
       if (letters.length) {
         const have = {}; letters.forEach(l => have[l] = 1);
-        const top = letters.map(l => l.charCodeAt(0)).sort((a, b) => a - b).pop();
-        for (let cc = 65; cc <= top; cc++) if (!have[String.fromCharCode(cc)]) { letter = String.fromCharCode(cc); break }
-        if (!letter) letter = String.fromCharCode(top + 1);
+        const codes = letters.map(l => l.charCodeAt(0)).sort((a, b) => a - b);
+        const lo = codes[0], hi = codes[codes.length - 1];
+        for (let cc = lo; cc <= hi; cc++) if (!have[String.fromCharCode(cc)]) { letter = String.fromCharCode(cc); break }
+        if (!letter && hi < 90) letter = String.fromCharCode(hi + 1);
       }
-      const key = letter ? 'poule' + letter : 'pouleX';
+      const key = letter ? pre + letter : pre + 'Extra';
       if (rows.length && !tables[id][key]) {
         tables[id][key] = rows;
-        groups.push([key, letter ? 'Poule ' + letter : 'Poule']);
+        groups.push([key, letter ? word + ' ' + letter : word]);
         groups.sort((a, b) => String(a[1]).localeCompare(String(b[1])));
       }
     }
