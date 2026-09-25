@@ -337,6 +337,7 @@ a{color:var(--accent);text-decoration:none}
 .kowin b{color:var(--ink)}
 .koout{opacity:.5}
 .kowait{border-style:dashed;cursor:default}
+.koopen b{font-weight:600;color:var(--ink-3)}
 .kochamp{background:var(--gold-soft);border-color:var(--gold);justify-content:center}
 .phaserow{display:flex;gap:8px;align-items:center;padding:12px 0 2px;flex-wrap:wrap}
 .phasesel{flex:1;min-width:150px;appearance:none;-webkit-appearance:none;
@@ -1601,14 +1602,44 @@ function koWaiting(id, x, y){
     '<b>'+esc(c.short||c.name||"")+'</b></span>';
 }
 
+/* The whole road to the final, not just the rounds the federation has drawn.
+   Rounds that are not played yet are laid out as open ties: a slot fills in
+   with a club the moment it wins the tie that feeds it, and until then says
+   which tie it is waiting on. The ties are paired in bracket order (tie 1 and
+   2 meet, 3 and 4 meet). As soon as the federation publishes the real next
+   round, the real fixtures replace these open ties. */
 function koBracket(divId){
-  var rounds = koTree(divId);
-  if(!rounds.length) return '';
+  var real = koTree(divId);
+  if(!real.length) return '';
+  var pa = LANG === "pa";
+  var cols = real.map(function(R2){ return { name:R2.name, real:true, ties:R2.matches.map(function(m){ return { m:m } }) } });
+
+  function sideOf(col, k){
+    var t = col.ties[k];
+    if(!t) return { id:'', label:'' };
+    var win = t.m ? koWinner(t.m) : '';
+    var label;
+    if(t.m){
+      label = (pa ? "Ganadó " : "Winner ") + (club(t.m.home).abbr || "?") + "/" + (club(t.m.away).abbr || "?");
+    } else {
+      var nt = col.ties.length;
+      var one = nt === 2 ? "semi" : nt <= 4 ? (pa ? "kuarto" : "quarter") : (pa ? "ronde" : "tie");
+      label = (pa ? "Ganadó " : "Winner ") + one + " " + (k + 1);
+    }
+    return { id:win, label:label };
+  }
+  var n = cols[cols.length-1].ties.length;
+  while(n > 1){
+    var prev = cols[cols.length-1], nt = Math.ceil(n / 2), ties = [];
+    for(var j = 0; j < nt; j++) ties.push({ m:null, home:sideOf(prev, 2*j), away:sideOf(prev, 2*j+1) });
+    cols.push({ name:koRoundName(nt), real:false, ties:ties });
+    n = nt;
+  }
 
   var ys = [];
-  ys[0] = rounds[0].matches.map(function(m, j){ return HEAD_H + j * (TIE_H + TIE_GAP) });
-  for(var r = 1; r < rounds.length; r++){
-    ys[r] = rounds[r].matches.map(function(m, j){
+  ys[0] = cols[0].ties.map(function(t, j){ return HEAD_H + j * (TIE_H + TIE_GAP) });
+  for(var r = 1; r < cols.length; r++){
+    ys[r] = cols[r].ties.map(function(t, j){
       var a = ys[r-1][2*j], b = ys[r-1][2*j+1];
       if(a === undefined) a = ys[r-1][j] !== undefined ? ys[r-1][j] : HEAD_H;
       if(b === undefined) b = a;
@@ -1616,29 +1647,29 @@ function koBracket(divId){
     });
   }
 
-  var last = rounds[rounds.length-1];
-  var allDone = last.matches.every(function(m){ return m.status === "ft" && koWinner(m) });
-  var waitCol = null;
-  if(allDone && last.matches.length > 1){
-    waitCol = { name: koRoundName(Math.ceil(last.matches.length / 2)),
-                slots: last.matches.map(function(m, j){ return { id: koWinner(m), y: ys[rounds.length-1][j] } }) };
-  }
-  var champ = allDone && last.matches.length === 1 ? koWinner(last.matches[0]) : "";
+  var lastCol = cols[cols.length-1];
+  var champ = lastCol.real && lastCol.ties.length === 1 ? koWinner(lastCol.ties[0].m) : "";
 
-  var cols = rounds.length + (waitCol ? 1 : 0) + (champ ? 1 : 0);
-  var W = cols * COL_W + (cols - 1) * COL_GAP;
-  var H = HEAD_H + rounds[0].matches.length * (TIE_H + TIE_GAP);
+  var ncol = cols.length + (champ ? 1 : 0);
+  var W = ncol * COL_W + (ncol - 1) * COL_GAP;
+  var H = HEAD_H + cols[0].ties.length * (TIE_H + TIE_GAP);
+
+  function openSlot(side, x, y){
+    if(side.id) return koWaiting(side.id, x, y);
+    return '<span class="kobox kowait koopen" style="left:'+x+'px;top:'+y+'px;width:'+COL_W+'px;height:'+SLOT_H+'px">'+
+      '<b>'+esc(side.label)+'</b></span>';
+  }
 
   var nodes = '', heads = '', lines = '';
-  rounds.forEach(function(R2, r){
+  cols.forEach(function(col, r){
     var x = r * (COL_W + COL_GAP);
-    heads += '<span class="kohead" style="left:'+x+'px;width:'+COL_W+'px">'+esc(R2.name)+'</span>';
-    R2.matches.forEach(function(m, j){
+    heads += '<span class="kohead" style="left:'+x+'px;width:'+COL_W+'px">'+esc(col.name)+'</span>';
+    col.ties.forEach(function(t, j){
       var y = ys[r][j];
-      nodes += koSlot(m, true, x, y) + koSlot(m, false, x, y + SLOT_H + 3);
-      /* elbow from this tie across to the tie it feeds */
-      if(r + 1 < rounds.length){
-        var pj = Math.floor(j / 2), py = ys[r+1][pj];
+      if(t.m) nodes += koSlot(t.m, true, x, y) + koSlot(t.m, false, x, y + SLOT_H + 3);
+      else nodes += openSlot(t.home, x, y) + openSlot(t.away, x, y + SLOT_H + 3);
+      if(r + 1 < cols.length){
+        var py = ys[r+1][Math.floor(j / 2)];
         if(py !== undefined){
           var x1 = x + COL_W, x2 = x + COL_W + COL_GAP;
           var y1 = y + TIE_H / 2, y2 = py + TIE_H / 2, mx = x1 + COL_GAP / 2;
@@ -1647,21 +1678,12 @@ function koBracket(divId){
       }
     });
   });
-  if(waitCol){
-    var wx = rounds.length * (COL_W + COL_GAP);
-    heads += '<span class="kohead" style="left:'+wx+'px;width:'+COL_W+'px">'+esc(waitCol.name)+'</span>';
-    waitCol.slots.forEach(function(sl){
-      nodes += koWaiting(sl.id, wx, sl.y + (TIE_H - SLOT_H) / 2);
-      var x1 = wx - COL_GAP, yy = sl.y + TIE_H / 2;
-      lines += '<polyline points="'+x1+','+yy+' '+wx+','+yy+'"/>';
-    });
-  }
   if(champ){
-    var cx = (rounds.length + (waitCol ? 1 : 0)) * (COL_W + COL_GAP);
-    heads += '<span class="kohead" style="left:'+cx+'px;width:'+COL_W+'px">'+esc(LANG==="pa"?"Kampion":"Champion")+'</span>';
-    nodes += '<span class="kobox kowin kochamp" style="left:'+cx+'px;top:'+(ys[rounds.length-1][0] + (TIE_H - SLOT_H)/2)+'px;width:'+COL_W+'px;height:'+SLOT_H+'px">'+
+    var cx = cols.length * (COL_W + COL_GAP), cy = ys[cols.length-1][0];
+    heads += '<span class="kohead" style="left:'+cx+'px;width:'+COL_W+'px">'+esc(pa?"Kampion":"Champion")+'</span>';
+    nodes += '<span class="kobox kowin kochamp" style="left:'+cx+'px;top:'+(cy + (TIE_H - SLOT_H)/2)+'px;width:'+COL_W+'px;height:'+SLOT_H+'px">'+
       '\u{1F3C6} <b>'+esc(club(champ).short||club(champ).name)+'</b></span>';
-    var lx = cx - COL_GAP, ly = ys[rounds.length-1][0] + TIE_H / 2;
+    var lx = cx - COL_GAP, ly = cy + TIE_H / 2;
     lines += '<polyline points="'+lx+','+ly+' '+cx+','+ly+'"/>';
   }
 
