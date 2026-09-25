@@ -2088,8 +2088,12 @@ var IC={
 var NAV=[
  {id:"home",k:"home"},{id:"matches",k:"matches"},{id:"table",k:"table"},{id:"stats",k:"stats"},
  {id:"transfers",k:"transfers"},{id:"news",k:"news"},{id:"clubs",k:"clubs"},{id:"fan",k:"fan"},
- {id:"arbiter",k:"arbiter"},{id:"profile",k:"profileT"}
+ {id:"profile",k:"profileT"}
 ];
+/* Referees are hidden from fans until Adrian has brought them on board. The
+   section still shows for anyone signed in as a referee or admin, and the
+   console itself is always reachable at #/ref. */
+function showRefs(){ return !!REF || adminOn() }
 /* The bottom row ends in the profile, where the account and every setting live,
    the way every scores app people already use is laid out. */
 var BNAV=["home","matches","table","stats","profile"];
@@ -2119,6 +2123,7 @@ function toTop(){
 function renderChrome(){
   var rail=$("#rail"), bn=$("#bnav");
   var items=NAV.slice();
+  if(showRefs()) items.splice(items.length-1,0,{id:"arbiter",k:"arbiter"});
   if(adminOn()) items.push({id:"admin",k:"admin"});
   var liveN=DATA.matches.filter(function(m){return m.status==="live"}).length;
   rail.innerHTML='<div class="railhead">'+esc(DATA.season)+' · '+esc(DATA.fed.abbr)+'</div>'+
@@ -2946,7 +2951,7 @@ function viewNews(){
   h+= nn.length? '<div class="card">'+nn.map(newsItem).join("")+'</div>' : awaitAdmin("news");
   h+=adFor("news");
   h+='<div class="sechead"><h2 style="font-size:15px">'+esc(T("more"))+'</h2></div>'+
-     '<div class="grid gauto">'+[["arbiter","arbiter"],["transfers","transfers"],["clubs","clubs"],["fan","fan"]].concat(adminOn()?[["admin","admin"]]:[]).map(function(x){
+     '<div class="grid gauto">'+(showRefs()?[["arbiter","arbiter"]]:[]).concat([["transfers","transfers"],["clubs","clubs"],["fan","fan"]]).concat(adminOn()?[["admin","admin"]]:[]).map(function(x){
        return '<button class="clubcard" data-go="'+x[0]+'"><span class="crest lg" style="background:var(--accent-soft);color:var(--accent)">'+IC[x[1]]+'</span><span><b>'+esc(T(x[1]))+'</b></span></button>';
      }).join("")+'</div>';
   return h;
