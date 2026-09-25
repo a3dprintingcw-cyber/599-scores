@@ -113,6 +113,15 @@ function leaders(html) {
   return out;
 }
 
+/* The feed shows the date inside each match as "Date / Time: Aug 17, 2026, 9:00 PM".
+   It used to list the dates in a script block; that went away on 24 September 2026. */
+const MON = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+function matchDate(s) {
+  const m = /([A-Z][a-z]{2})[a-z]* (\d{1,2}), (\d{4})/.exec(s || '');
+  if (!m || !MON[m[1]]) return '';
+  return m[3] + '-' + String(MON[m[1]]).padStart(2, '0') + '-' + m[2].padStart(2, '0');
+}
+
 function fixtures(html, date) {
   const d = dom(html), out = [];
   [...d.querySelectorAll('.match-wrap')].forEach(box => {
@@ -120,7 +129,10 @@ function fixtures(html, date) {
     const status = /STATUS_COMPLETE/.test(cls) ? 'ft'
       : /STATUS_LIVE|STATUS_IN_PROGRESS/.test(cls) ? 'live'
       : /STATUS_CANCEL|STATUS_POSTPON/.test(cls) ? 'post' : 'sched';
-    const time = (txt(box.querySelector('.match-time span')).match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i) || [])[1] || '';
+    const when = txt(box.querySelector('.match-time'));
+    const time = (txt(box.querySelector('.match-time span')).match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i) ||
+                  when.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i) || [])[1] || '';
+    const day = matchDate(when) || date || '';
     const venue = txt(box.querySelector('.venuename'));
     const ref = txt(box.querySelector('.officialsname'));
     function side(sel) {
@@ -135,7 +147,7 @@ function fixtures(html, date) {
     if (!h || !a || !h.id || !a.id) return;
     out.push({
       mid: ((box.id || '').match(/(\d+)/) || [])[1] || '',
-      date, time, venue, ref, home: h.id, away: a.id,
+      date: day, time, venue, ref, home: h.id, away: a.id,
       hs: isNaN(h.score) ? 0 : h.score, as: isNaN(a.score) ? 0 : a.score, status
     });
   });
@@ -178,7 +190,6 @@ async function logosAsDataURIs(urls) {
     const want = process.env.FFK_ONLY.split(',').map(s => s.trim());
     comps = comps.filter(c => want.includes(c.id));
   }
-  const MAXD = +(process.env.FFK_MAX_DATES || 0);
   log('competitions:', comps.map(c => `${c.year}/${c.id} ${c.name}`).join(' | '));
 
   const raw = { scrapedAt: new Date().toISOString(), competitions: [], teams: TEAMS, logos: {} };
@@ -203,35 +214,21 @@ async function logosAsDataURIs(urls) {
 
     const seen = {};
 
-    /* Every date this competition has, before any phase filtering. */
-    const ds = new Set();
-    for (const p of ph) {
-      const h = await get(`/competition/${c.id}/schedule?${p.q.replace(/standings/g, 'schedule')}`);
-      dates(h).forEach(x => ds.add(x));
-    }
-    dates(await get(`/competition/${c.id}/schedule?`)).forEach(x => ds.add(x));
-    let list = [...ds].sort();
-    if (MAXD) list = list.slice(-MAXD);
-    log('  dates:', list.length);
-
-    /* Phase by phase first, so each match keeps the phase it was played in.
-       Some phases ignore the filter and hand back the whole season, and going
-       date by date through those would triple the length of the run for nothing,
-       so a phase is only walked when the filter actually narrowed it. */
+    /* roundNumber=-1 makes the feed return every match of the competition on one
+       page (without it, only the current round). Phase by phase first, so each
+       match keeps the phase it was played in, then the whole list to catch any
+       match that sits outside a named phase. */
+    const ALL = 'roundNumber=-1';
     for (const lbl of phaseNames(top)) {
-      const q = 'phaseName=' + encodeURIComponent(lbl) + '&';
-      let pds = dates(await get(`/competition/${c.id}/schedule?${q}`));
-      if (MAXD) pds = pds.slice(-MAXD);
-      if (!pds.length || pds.length >= list.length) { log('  phase', lbl, '-> not filtered, skipped'); continue }
-      (await pool(pds, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&${q}`), dt)))
-        .forEach(a => (a || []).forEach(m => {
-          if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = lbl; entry.matches.push(m) }
-        }));
-      log('  phase', lbl, '->', pds.length, 'dates');
+      const q = 'phaseName=' + encodeURIComponent(lbl) + '&' + ALL;
+      const got = fixtures(await get(`/competition/${c.id}/schedule?${q}`), '');
+      got.forEach(m => { if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = lbl; entry.matches.push(m) } });
+      log('  phase', lbl, '->', got.length);
     }
-
-    (await pool(list, 6, async dt => fixtures(await get(`/competition/${c.id}/schedule?dateFilter=${dt}&`), dt)))
-      .forEach(a => (a || []).forEach(m => { if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = m.phase || ''; entry.matches.push(m) } }));
+    fixtures(await get(`/competition/${c.id}/schedule?${ALL}`), '')
+      .forEach(m => { if (m.mid && !seen[m.mid]) { seen[m.mid] = 1; m.phase = m.phase || ''; entry.matches.push(m) } });
+    const undated = entry.matches.filter(m => !m.date).length;
+    if (undated) log('  WARNING', undated, 'matches without a date');
     log('  fixtures:', entry.matches.length, '| tables:', entry.standings.length);
     raw.competitions.push(entry);
   }

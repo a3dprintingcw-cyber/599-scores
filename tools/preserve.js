@@ -62,6 +62,17 @@ const prevDiv = {};
   }
 });
 
+/* The whole match list. On 24 September 2026 the feed changed its schedule
+   pages, the scraper found nothing, and the app went out with zero games. If a
+   run comes back with far fewer matches than the last good one, keep the old list
+   and let the job fail loudly instead of publishing an empty app. */
+const nPrev = (prev.matches || []).length, nNow = (now.matches || []).length;
+if (nPrev >= 20 && nNow < nPrev * 0.7) {
+  now.matches = prev.matches;
+  kept.push('matches (' + nNow + ' scraped vs ' + nPrev + ' before)');
+  process.exitCode = 1;
+}
+
 /* The app reads its server address from here too. Losing it would quietly turn
    off live scores, referee sign in and the fan ladder. */
 if (!now.api && prev.api) { now.api = prev.api; kept.push('api'); }
