@@ -252,9 +252,39 @@ raw.competitions.forEach(comp => {
   });
 });
 
-/* live competition first, then newest */
+/* Next season for the leagues, before the federation publishes it. Adrian's
+   call: 2026/27 opens as the main season with every club on 0 points (so the
+   table reads alphabetically), and 2025/26 stays one tap away in the season
+   dropdown. The clubs are last season's. The moment the federation publishes
+   the new season for that division, its own competition replaces this one. */
+[1, 2, 3, 4].forEach(tier => {
+  const mine = divisions.filter(d => d.tier === tier);
+  if (!mine.length) return;
+  const last = mine.slice().sort((a, b) => b.season.localeCompare(a.season))[0];
+  const ny = String(+last.season + 1);
+  if (!/^\d{4}$/.test(ny) || mine.some(d => d.season === ny)) return;
+  const name = last.name.replace(/(\d{4})(\s*-\s*)(\d{2,4})/, (m, a, sep, b) =>
+    (+a + 1) + sep + (b.length === 2 ? String((+b + 1) % 100).padStart(2, '0') : String(+b + 1)));
+  if (name === last.name) return;
+  const roster = new Set();
+  matches.forEach(m => { if (m.div === last.id) { roster.add(m.home); roster.add(m.away) } });
+  Object.values(tables[last.id] || {}).forEach(rows => (rows || []).forEach(r => roster.add(r[1])));
+  const id = last.id.replace(/\d{4}$/, '') + ny;
+  if (divisions.some(d => d.id === id)) return;
+  divisions.push({
+    id, name, short: last.short, en: name, type: 'league', season: ny,
+    status: 'live', tier, cfu: last.cfu, groups: [], planned: true,
+    roster: [...roster].filter(c => byId[c]).sort((a, b) => byId[a].short.localeCompare(byId[b].short))
+  });
+  tables[id] = {};
+});
+
+/* live competition first, then newest. A season that has not started yet is
+   live, so it is the one a league opens on, but it never pushes a competition
+   with games on the calendar off the front page. */
 divisions.sort((a, b) =>
   (a.status === 'live' ? 0 : 1) - (b.status === 'live' ? 0 : 1) ||
+  (a.planned ? 1 : 0) - (b.planned ? 1 : 0) ||
   b.season.localeCompare(a.season) || (a.tier || 9) - (b.tier || 9));
 
 /* referees named on the match sheets */
