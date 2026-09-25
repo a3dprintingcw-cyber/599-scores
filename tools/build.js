@@ -279,6 +279,29 @@ raw.competitions.forEach(comp => {
   tables[id] = {};
 });
 
+/* Promotion and relegation into the new season, as Adrian gave them. Club ids
+   are the federation's; [club, from tier, to tier]. Only a season we laid out
+   ourselves is touched: once the federation publishes theirs, their list wins. */
+const MOVES = {
+  '2026': [
+    ['8736', 1, 2],   // SUBT: Promé down to Segunda
+    ['8752', 2, 1],   // C.D. Santa Rosa: Segunda up to Promé
+    ['12879', 3, 2],  // Jong Colombia (Terser): Terser up to Segunda
+    ['8746', 2, 3]    // F.C. Inter: Segunda down to Terser
+  ]
+};
+Object.keys(MOVES).forEach(season => {
+  const at = tier => divisions.find(d => d.planned && d.season === season && d.tier === tier);
+  MOVES[season].forEach(([cid, from, to]) => {
+    const a = at(from), b = at(to);
+    if (!a || !b || !byId[cid]) return;
+    a.roster = a.roster.filter(x => x !== cid);
+    if (!b.roster.includes(cid)) b.roster.push(cid);
+  });
+  divisions.filter(d => d.planned && d.season === season)
+    .forEach(d => d.roster.sort((x, y) => byId[x].short.localeCompare(byId[y].short)));
+});
+
 /* live competition first, then newest. A season that has not started yet is
    live, so it is the one a league opens on, but it never pushes a competition
    with games on the calendar off the front page. */
