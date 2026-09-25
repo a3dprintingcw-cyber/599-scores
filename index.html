@@ -2672,7 +2672,8 @@ function refApply(mid, patch){
   if(!m){
     /* A fixture we typed in ourselves, which the server has not put in our
        appointment list yet. Adopt it so the panel keeps up as we tap. */
-    var o = (DATA.ownmatches||[]).filter(function(x){ return x.id === mid })[0];
+    var o = (DATA.ownmatches||[]).filter(function(x){ return x.id === mid })[0] ||
+            (serverAdmin() ? DATA.matches.filter(function(x){ return x.id === mid })[0] : null);
     if(!o) return;
     m = { id:o.id, date:o.date, time:o.time||"", div:o.div, home:o.home, away:o.away,
           venue:o.venue||"", feedStatus:"sched", state:null, own:true };
@@ -2701,9 +2702,26 @@ function refList(){
                 venue:o.venue||"", feedStatus:"sched", state:null, own:true });
     have[o.id]=1;
   });
+  /* The admin scores any game, not only the ones he is appointed to: the last
+     week, today and tomorrow, including the fixtures typed in by hand. The
+     server already lets an admin act on any match. */
+  if(serverAdmin()){
+    var from=new Date(Date.now()+TZ_OFFSET_MS-7*86400000).toISOString().slice(0,10);
+    var to=new Date(Date.now()+TZ_OFFSET_MS+86400000).toISOString().slice(0,10);
+    DATA.matches.forEach(function(m){
+      if(!m || have[m.id] || m.ffkFinal || !m.date || m.date<from || m.date>to) return;
+      list.push({ id:m.id, date:m.date, time:m.time||"", div:m.div, home:m.home, away:m.away,
+                  venue:m.venue||"", feedStatus:m.ours?"ft":"sched",
+                  state:m.ours?{status:"ft",hs:m.hs,as:m.as,minute:0,confirmed:true}:null,
+                  own:!!m.own, extra:true });
+      have[m.id]=1;
+    });
+  }
   var done=function(x){ return (x.state&&x.state.confirmed) || x.feedStatus==="ft" ? 1 : 0 };
+  var ahead=function(x){ return String(x.date)>t ? 1 : 0 };
   list.sort(function(a,b){
-    return done(a)-done(b) || String(b.date).localeCompare(String(a.date)) ||
+    return done(a)-done(b) || ahead(a)-ahead(b) ||
+           (ahead(a) ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date))) ||
            String(a.time).localeCompare(String(b.time));
   });
   return list;
@@ -2793,6 +2811,19 @@ function refPanel(m){
       esc(LANG==="pa"?"E resultado ta ofisial. Pa un koreshon, papia ku e admin.":"This result is official. For a correction, speak to the admin.")+'</p></div></div>';
   }
 
+  /* A game from an earlier day that nobody scored live: the admin can put the
+     final score straight in instead of playing the match through the clock. */
+  if(!live && serverAdmin() && m.date < today()){
+    h += '<div class="card" style="padding:14px;margin:12px 0">'+
+      '<div class="eyebrow">'+esc(LANG==="pa"?"Pone e resultado final":"Enter the final score")+'</div>'+
+      '<p class="muted" style="font-size:13px;margin:8px 0">'+
+      esc(LANG==="pa"?"Pa un partido ku a wòrdu hunga kaba. E tabel ta kalkulá su mes.":"For a game already played. The table works itself out.")+'</p>'+
+      '<div class="frow">'+
+        '<div class="field"><label>'+esc(club(m.home).short)+'</label><input id="fixhs" type="number" min="0" max="30" value="0"></div>'+
+        '<div class="field"><label>'+esc(club(m.away).short)+'</label><input id="fixas" type="number" min="0" max="30" value="0"></div>'+
+      '</div>'+
+      '<div class="btnrow"><button class="btn" data-act="fixscore" data-m="'+esc(m.id)+'">'+esc(T("save"))+'</button></div></div>';
+  }
   if(!live){
     h += '<div class="reftap" style="grid-template-columns:1fr">'+
       '<button class="bigbtn go" data-act="refstart" data-m="'+esc(m.id)+'"><b>'+esc(LANG==="pa"?"Kuminsá partido":"Kick off")+'</b>'+
