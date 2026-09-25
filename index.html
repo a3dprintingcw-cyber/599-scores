@@ -1475,12 +1475,20 @@ function pickComp(k){
   var y=list[0]&&list[0].season;
   return bestOf(phasesOf(k,y))||list[0];
 }
+/* "Live" on screen means a match is being played right now, not that the
+   competition is still running. d.status stays "live" for the whole season,
+   which is what picks the default competition, but a red badge on a Tuesday
+   afternoon with nothing on told people something was happening that was not. */
+function liveNow(d){
+  return !!d && DATA.matches.some(function(m){ return m.div===d.id && m.status==="live" });
+}
 function compList(){
   var seen={},out=[];
   DATA.divisions.forEach(function(d){
     var k=compKey(d);
-    if(!seen[k]){ seen[k]={key:k,name:compName(d),short:compShort(d),type:d.type,tier:(d.tier==null?9:d.tier),live:false}; out.push(seen[k]) }
+    if(!seen[k]){ seen[k]={key:k,name:compName(d),short:compShort(d),type:d.type,tier:(d.tier==null?9:d.tier),live:false,now:false}; out.push(seen[k]) }
     if(d.status==="live") seen[k].live=true;
+    if(liveNow(d)) seen[k].now=true;
   });
   out.sort(function(a,b){ return a.live!==b.live ? (a.live?-1:1) : a.tier-b.tier });
   return out;
@@ -2118,7 +2126,7 @@ function renderChrome(){
    '<div class="railhead">'+esc(LANG==="pa"?"Kompetishon":"Competitions")+'</div>'+
    compList().map(function(c){
      return '<button class="navitem" data-setcomp="'+esc(c.key)+'"'+(compKeyOf(R.div)===c.key?' aria-current="page"':'')+'><span class="ic">'+(c.type==="cup"?"\u2606":c.tier)+'</span>'+esc(c.short)+
-       (c.live?'<span class="badge">'+esc(T("live"))+'</span>':'')+'</button>';
+       (c.now?'<span class="badge">'+esc(T("live"))+'</span>':'')+'</button>';
    }).join("");
 
   bn.style.gridTemplateColumns="repeat("+BNAV.length+",1fr)";
@@ -2152,7 +2160,7 @@ function divTabs(extraAll){
   var h='<div class="tabrail">'+(extraAll?'<button class="tab gold" data-alldiv="1" aria-pressed="'+(allComps?"true":"false")+'">'+esc(LANG==="pa"?"Tur":"All")+'</button>':'')+
     comps.map(function(c){
       return '<button class="tab gold" data-setcomp="'+esc(c.key)+'" aria-pressed="'+(c.key===ck)+'">'+
-        (c.live?'<span class="dot blink" style="color:var(--live)"></span> ':'')+esc(c.short)+'</button>';
+        (c.now?'<span class="dot blink" style="color:var(--live)"></span> ':'')+esc(c.short)+'</button>';
     }).join("")+'</div>';
   if(!cur) return h;
   var yrs=seasonsOf(ck), ph=phasesOf(ck,cur.season);
@@ -2167,7 +2175,7 @@ function divTabs(extraAll){
   if(ph.length>1){
     h+='<div class="phaserail">'+ph.map(function(d){
       return '<button class="tab sm" data-setdiv="'+esc(d.id)+'" aria-pressed="'+(d.id===R.div)+'">'+
-        (d.status==="live"?'<span class="dot blink" style="color:var(--live)"></span> ':'')+esc(phaseLabel(d)||d.short)+'</button>';
+        (liveNow(d)?'<span class="dot blink" style="color:var(--live)"></span> ':'')+esc(phaseLabel(d)||d.short)+'</button>';
     }).join("")+'</div>';
   }
   return h+'</div>';
@@ -2475,7 +2483,7 @@ function viewTable(){
     hk+='<div style="height:6px"></div>';
     hk+='<div class="sechead" style="margin:0 0 4px"><h2 style="font-size:16px">'+esc(d.name)+'</h2>'+
        '<span class="sub">'+esc(LANG==="pa"?"Knock out":"Knockout")+'</span>'+
-       (d.status==="live"?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
+       (liveNow(d)?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
     hk+=koBracket(R.div);
     if(!/kowait/.test(hk)) hk+=koThrough(R.div);
     hk+='<p class="muted" style="font-size:11.5px;margin:10px 2px">'+
@@ -2494,7 +2502,7 @@ function viewTable(){
   h+='<div style="height:12px"></div>';
   h+='<div class="sechead" style="margin:0 0 10px"><h2 style="font-size:16px">'+esc(d.name)+'</h2>'+
      (groupsOf(R.div).length>1?'<span class="sub">'+esc(groupName(R.div,activeGroup(R.div)))+'</span>':'')+
-     (d.status==="live"?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
+     (liveNow(d)?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
   h+=tableCard(R.div,stored?"all":tableMode,false);
   if(useOurTable(R.div)){
     h+='<p class="muted" style="font-size:11.5px;margin:8px 2px">'+
