@@ -2904,8 +2904,13 @@ function refEventList(m){
   }).join("")+'</div>';
 }
 
+/* Adrian runs the app; he is not a referee. His account and any other admin
+   never appear on the referee board and never see points or rewards, even
+   when he scores a game himself. */
+var NOT_REFEREES=["adrian"];
+function isController(id){ return NOT_REFEREES.indexOf(id)>=0 || (REF && REF.id===id && REF.role==="admin") }
 function myPointsPanel(){
-  if(!API || !REF) return '';
+  if(!API || !REF || serverAdmin()) return '';
   loadMine();
   if(MYPTS==="loading") return '<div class="card"><div class="empty" style="padding:16px"><p>…</p></div></div>';
   if(!MYPTS) return '';
@@ -2939,7 +2944,7 @@ function myPointsPanel(){
 }
 
 function rewardsPanel(){
-  if(!API || !REF) return '';
+  if(!API || !REF || serverAdmin()) return '';
   loadRewards();
   if(REWARDS==="loading") return '';
   var bal=(MYPTS && MYPTS.me) ? MYPTS.me.balance : 0;
@@ -4722,7 +4727,7 @@ function viewArbiter(){
     if(BOARD==="loading"||BOARD===null){
       return sampleBanner()+'<div class="card"><div class="empty" style="padding:26px"><p>…</p></div></div>';
     }
-    var rows=BOARD.referees||[];
+    var rows=(BOARD.referees||[]).filter(function(r){ return !isController(r.id) });
     st={};
     rows.forEach(function(r){ st[r.id]={id:r.id,m:r.matches,earned:r.earned,spent:r.spent,bal:r.balance,level:r.level,ref:r.matches,ar:0,fourth:0,last:""} });
     list=rows.map(function(r){ return Object.assign({},r,st[r.id]) });
