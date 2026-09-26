@@ -5593,10 +5593,16 @@ function render(){
     case "ref": h=viewRef(); break;
     default: h=viewHome();
   }
+  /* Keep the date row where it was across a redraw. A fresh row starts at the
+     far left, and scrolling back from there made the whole row spin past on
+     every tap. Now it only glides the short way to the day just picked. */
+  var oldRail=document.querySelector(".daterail"), railX=oldRail?oldRail.scrollLeft:null;
   v.innerHTML=h;
   var key=R.page+"/"+(R.page==="matches"?"":R.arg);
   if(key!==lastKey){ lastKey=key; adPick={}; toTop(); track("view", R.page); }
-  if(document.querySelector(".daterail")){ centreDay(railReady); railReady=true }
+  var newRail=document.querySelector(".daterail");
+  if(newRail && railX!==null && railReady) newRail.scrollLeft=railX;
+  if(newRail){ centreDay(railReady); railReady=true }
   else railReady=false;
   if(document.getElementById("gbtn")){ gLoad(); gPaint(); }
   if(document.querySelector("[data-notif]") && PUSHKEY===null) pushKeyLoad().then(function(k){ if(k) render() });
