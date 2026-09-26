@@ -3924,8 +3924,7 @@ function livePitch(m){
     '<rect x="0" y="30.34" width="2" height="7.32" fill="rgba(255,255,255,.55)"/><rect x="103" y="30.34" width="2" height="7.32" fill="rgba(255,255,255,.55)"/>'+
     '<g class="lpball" style="transform:translate('+(Q?Q.x.toFixed(1):"52.5")+'px,'+(Q?Q.y.toFixed(1):"34")+'px)"><circle r="1.4" fill="#fff" stroke="#111" stroke-width=".35"/></g></svg>';
   return '<div class="lpitch'+(Q?(Q.side==="h"?" onh":" ona")+(Q.x<52.5?" lpl":""):"")+'" data-pitch="'+esc(m.id)+'">'+svg+
-    '<div class="lplab"><b data-pt>'+esc(Q?Q.lab:"")+'</b><span data-pa>'+esc(Q?Q.act:"")+'</span></div><div class="lpgoal" data-pg hidden></div></div>'+
-    '<div class="lpnote">'+esc(LANG==="pa"?"Animashon pa diversion, e skor so ta real.":"Animation for fun, only the score is real.")+'</div>';
+    '<div class="lplab"><b data-pt>'+esc(Q?Q.lab:"")+'</b><span data-pa>'+esc(Q?Q.act:"")+'</span></div><div class="lpgoal" data-pg hidden></div></div>';
 }
 function pitchTick(){
   var els=document.querySelectorAll("[data-pitch]");
