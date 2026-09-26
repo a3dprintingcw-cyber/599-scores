@@ -2661,10 +2661,14 @@ function transferRow(t){
 var trFilter="all";
 function viewTransfers(){
   var list=DATA.transfers.slice().sort(function(a,b){return b.date.localeCompare(a.date)});
-  if(R.div) list=list.filter(function(t){
-    var a=t.toId&&club(t.toId).div===R.div, b=t.fromId&&club(t.fromId).div===R.div;
-    return a||b;
-  });
+  /* A club belongs to a competition if it plays in it, not only if that is
+     the one division its record happens to name. */
+  if(R.div){
+    var inDiv={}; clubsIn(R.div).forEach(function(id){ inDiv[id]=1 });
+    list=list.filter(function(t){
+      return (t.toId&&(inDiv[t.toId]||club(t.toId).div===R.div)) || (t.fromId&&(inDiv[t.fromId]||club(t.fromId).div===R.div));
+    });
+  }
   if(trFilter!=="all") list=list.filter(function(t){return t.status===trFilter});
   var conf=DATA.transfers.filter(function(t){return t.status==="confirmed"}).length;
   var h=sampleBanner()+divTabs(false);
