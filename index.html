@@ -323,6 +323,9 @@ a{color:var(--accent);text-decoration:none}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
 .kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .kobracket{position:relative;margin:0 auto}
+.comprow{display:flex;align-items:center;gap:10px}
+.comprow>.tabrail{flex:1 1 auto;min-width:0;margin-bottom:0}
+.comprow>.seasonsel{flex:0 0 auto;margin-left:auto;margin-top:10px}
 .kodate{position:absolute;font-size:9.5px;line-height:12px;color:var(--muted,#8b9099);text-align:center;white-space:nowrap;overflow:hidden}
 .clk{font-variant-numeric:tabular-nums}
 .kolines{position:absolute;inset:0;fill:none;stroke:var(--line);stroke-width:1.5}
@@ -2346,14 +2349,16 @@ function divTabs(extraAll){
     }).join("")+'</div>';
   if(!cur) return h;
   var yrs=seasonsOf(ck), ph=phasesOf(ck,cur.season);
-  if(yrs.length<2&&ph.length<2) return h;
-  h+='<div class="subrail">';
+  /* The year sits on the same row as the competitions, on the right, so it is
+     the first thing you see next to what you picked. */
   if(yrs.length>1){
-    h+='<select class="seasonsel" data-setseason="'+esc(ck)+'" aria-label="'+esc(T("season"))+'">'+
+    h='<div class="comprow">'+h+'<select class="seasonsel" data-setseason="'+esc(ck)+'" aria-label="'+esc(T("season"))+'">'+
       yrs.map(function(y){
         return '<option value="'+esc(y)+'"'+(y===cur.season?' selected':'')+'>'+esc(seasonLabel(phasesOf(ck,y)[0]))+'</option>';
-      }).join("")+'</select>';
+      }).join("")+'</select></div>';
   }
+  if(ph.length<2) return h;
+  h+='<div class="subrail">';
   if(ph.length>1){
     h+='<div class="phaserail">'+ph.map(function(d){
       return '<button class="tab sm" data-setdiv="'+esc(d.id)+'" aria-pressed="'+(d.id===R.div)+'">'+
