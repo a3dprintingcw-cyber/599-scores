@@ -1825,14 +1825,19 @@ function standings(divId,mode){
     return {pos:r[0],id:r[1],p:r[2],w:r[3],l:r[4],d:r[5],gf:r[6],ga:r[7],pts:r[8],gd:r[9],cs:0,form:clubForm(r[1],5)};
   });
   var rows={};
-  rosterOf(divId).forEach(function(cid){
+  /* A cup split into groups with no federation table (the women's Kopa): the
+     group on screen is worked out from the fixtures carrying that group, so
+     each group table holds only its own clubs and its own games. */
+  var grp=activeGroup(divId), inGrp=null;
+  if(grp && grp!=="__ko" && matchesOf(divId).some(function(m){return m.group===grp})) inGrp=function(m){return m.group===grp};
+  (inGrp ? [] : rosterOf(divId)).forEach(function(cid){
     rows[cid]={id:cid,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0,form:[],cs:0};
   });
-  var ms=matchesOf(divId).filter(finished).sort(function(a,b){return a.date.localeCompare(b.date)||a.id.localeCompare(b.id)});
+  var ms=matchesOf(divId).filter(finished).filter(inGrp||function(){return true}).sort(function(a,b){return a.date.localeCompare(b.date)||a.id.localeCompare(b.id)});
   /* A club can turn up in a match without being on the season roster: a fixture
      put in by hand, or a club the federation added mid season. Give it a row
      rather than dropping the match, which would leave the table not adding up. */
-  matchesOf(divId).forEach(function(m){
+  matchesOf(divId).filter(inGrp||function(){return true}).forEach(function(m){
     [m.home, m.away].forEach(function(cid){
       if(cid && !rows[cid]) rows[cid]={id:cid,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0,form:[],cs:0};
     });
