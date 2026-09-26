@@ -2376,11 +2376,12 @@ function renderChrome(){
        (c.now?'<span class="badge">'+esc(T("live"))+'</span>':'')+'</button>';
    }).join("")+
    (function(){
-     var nat=DATA.divisions.filter(function(d){ return d.national && d.status!=="done" });
+     var nat=nationalDivs();
      if(!nat.length) return "";
+     var onId=R.page==="national" ? nationalFor(R.arg).id : "";
      return '<div class="railhead">'+esc(LANG==="pa"?"Nashonal":"National")+'</div>'+nat.map(function(d){
        var tid=d.national.team, lv=matchesOf(d.id).some(function(m){return m.status==="live"});
-       return '<button class="navitem" data-go="national"'+(R.page==="national"?' aria-current="page"':'')+'><span class="ic">'+(C[tid]?crest(tid,"sm"):"\u2606")+'</span>'+esc(d.short||"Blue Wave")+
+       return '<button class="navitem" data-go="national/'+esc(d.id)+'"'+(onId===d.id?' aria-current="page"':'')+'><span class="ic">'+(C[tid]?crest(tid,"sm"):"\u2606")+'</span>'+esc(d.short||"Blue Wave")+
          (lv?'<span class="badge">'+esc(T("live"))+'</span>':'')+'</button>';
      }).join("");
    })();
@@ -4851,8 +4852,12 @@ function countdown(m){
    a countdown, or the live score while they play. Everything comes from the
    competition marked national in published content, and the games are scored
    live from the referee console like any other. */
-function blueWaveBar(){
-  var d=DATA.divisions.filter(function(x){ return x.national && x.status!=="done" })[0];
+function blueWaveBar(divId){
+  var d=divId ? nationalFor(divId) : null;
+  if(!d){
+    var ds=nationalDivs();
+    d=ds.filter(function(x){ return matchesOf(x.id).some(function(m){ return m.status==="live" }) })[0] || ds[0];
+  }
   if(!d) return "";
   var tid=d.national.team, pa=LANG==="pa";
   if(!tid || !C[tid]) return "";
@@ -4868,8 +4873,9 @@ function blueWaveBar(){
   var score=function(m){ return club(m.home).short+" "+m.hs+"-"+m.as+" "+club(m.away).short };
   var ord=function(n){ return pa ? n+"°" : n+(n===1?"st":n===2?"nd":n===3?"rd":"th") };
   var h='<button class="bwbar" data-bwdiv="'+esc(d.id)+'">';
-  h+='<div class="bwtop">'+crest(tid,"lg")+'<div style="min-width:0"><div class="bweyebrow">'+esc(pa?"Selekshon di Kòrsou":"Curaçao national team")+'</div>'+
-     '<b class="bwname">Blue Wave</b><div class="bwcomp">'+esc(d.name)+'</div></div>'+
+  var lvl=d.national.level||"";
+  h+='<div class="bwtop">'+crest(tid,"lg")+'<div style="min-width:0"><div class="bweyebrow">'+esc((pa?"Selekshon di Kòrsou":"Curaçao national team")+(lvl?" · "+lvl:""))+'</div>'+
+     '<b class="bwname">'+esc(d.short||"Blue Wave")+'</b><div class="bwcomp">'+esc(d.name)+'</div></div>'+
      (me && me.p ? '<span class="bwpos">'+esc(ord(me.pos))+' · '+me.pts+' '+esc(pa?"pt":"pts")+'</span>' : '')+'</div>';
   h+='<div class="bwgrid">';
   if(live) h+='<div class="bwcell bwlive"><span class="k"><span class="dot blink"></span> '+esc(T("live"))+'</span><b>'+esc(score(live))+'</b><small>'+clockSpan(live.id)+'</small></div>';
@@ -4885,17 +4891,25 @@ function blueWaveBar(){
   h+='</div></button>';
   return h;
 }
+/* National teams. Today there is one (the Blue Wave); U15, U17 and U20 teams
+   can follow as their own competitions marked national, each with its own
+   entry in the menu and its own page, with nothing to change here. */
+function nationalDivs(){ return DATA.divisions.filter(function(x){ return x.national && x.status!=="done" }) }
+function nationalFor(id){
+  var ds=nationalDivs();
+  return ds.filter(function(x){ return x.id===id })[0] || ds[0] || null;
+}
 /* The national team's own page: the bar, the group table, Curaçao's games and
    every game in the group. Reached from the National section of the menu or by
    tapping the bar on Today, never from the club competition buttons. */
 function viewNational(){
-  var d=DATA.divisions.filter(function(x){ return x.national })[0];
+  var d=nationalFor(R.arg);
   if(!d) return '<div class="card"><div class="empty"><h3>'+esc(T("nothingYet"))+'</h3></div></div>';
   var tid=d.national.team, pa=LANG==="pa";
   var byDate=function(a,b){ return (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")) };
   var all=matchesOf(d.id).slice().sort(byDate);
   var mine=all.filter(function(m){ return m.home===tid || m.away===tid });
-  var h=blueWaveBar();
+  var h=blueWaveBar(d.id);
   h+='<div class="sechead"><h2>'+esc(pa?"Tabel":"Table")+'</h2><span class="sub">'+esc(d.name)+'</span></div>'+standingsBody(d.id);
   h+='<div class="sechead"><h2>'+esc(pa?"Partidonan di Kòrsou":"Curaçao's games")+'</h2></div>'+matchList(mine,true);
   h+='<div class="sechead"><h2>'+esc(pa?"Tur partido den e grupo":"Every game in the group")+'</h2></div>'+matchList(all,true);
@@ -5504,7 +5518,7 @@ document.addEventListener("click",function(ev){
   if(g){ closeModal(); go(g); return }
   if(a.hasAttribute("data-setcomp")){ allComps=false; lsSet("kf.allcomps",false); setComp(a.getAttribute("data-setcomp")); return }
   if(a.hasAttribute("data-godiv")){ R.div=a.getAttribute("data-godiv"); render(); return }
-  if(a.hasAttribute("data-bwdiv")){ if(R.page!=="national") go("national"); return }
+  if(a.hasAttribute("data-bwdiv")){ var bw=a.getAttribute("data-bwdiv"); if(!(R.page==="national" && nationalFor(R.arg).id===bw)) go("national/"+bw); return }
   if(a.hasAttribute("data-mfilt")){ mFilter=a.getAttribute("data-mfilt"); render(); return }
   if(a.hasAttribute("data-compfold")){
     var cf=a.getAttribute("data-compfold");
