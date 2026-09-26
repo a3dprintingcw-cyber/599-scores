@@ -2433,9 +2433,7 @@ function renderChrome(){
   var th=lsGet("kf.theme","auto");
   $("#themebtn").innerHTML=(th==="light"?IC.sun:th==="dark"?IC.moon:IC.auto);
 
-  $("#foot").innerHTML='<b>599 Scores</b> · '+esc(T("season"))+' '+esc(DATA.season)+' · '+
-    (LANG==="pa"?'Data i logo ofisial di ':'Official data and badges from ')+
-    '<a href="'+esc(DATA.fed.site)+'" target="_blank" rel="noopener">'+esc(DATA.fed.name)+'</a>.<br>'+
+  $("#foot").innerHTML='<b>599 Scores</b> · '+esc(T("season"))+' '+esc(DATA.season)+'<br>'+
     (LANG==="pa"?'Último aktualisashon':'Last updated')+': '+esc(DATA.updated)+'.';
 }
 
