@@ -434,6 +434,7 @@ tr.z-champ .postn::before{background:var(--gold)}
 tr.z-cfu .postn::before{background:var(--accent)}
 tr.z-po .postn::before{background:#E08A0C}
 tr.z-rel .postn::before{background:var(--loss)}
+tr.z-go .postn::before{background:var(--win,#1e9e5a)}
 .teamcell{display:flex;align-items:center;gap:9px;min-width:0}
 .teamcell .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 td.pts{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:15px}
@@ -1868,7 +1869,73 @@ function standings(divId,mode){
   return list;
 }
 function groupWinnersFinal(divId){ var d=divOf(divId); return !!(d && d.final && d.final.rule==="groupwinners") }
+/* How an FFK league season runs: a regular season, then smaller play-off
+   rounds (Kaya 6, Kaya 4), then a final. The top of each phase goes on to the
+   next: Kaya N takes the top N, the final takes the top 2, and whoever tops the
+   last phase is champion. In the Promé the last club of the regular season goes
+   down. The chain is read from the phases the competition has; a season that
+   has not split into phases yet borrows the chain of the same division's
+   previous season, since the format stays the same year to year. */
+function phaseRank(name){
+  var n=String(name||"").toLowerCase(), k=n.match(/kaya\s*(\d+)/);
+  if(/regular/.test(n)) return 0;
+  if(k) return 100-(+k[1]);
+  if(/final/.test(n)) return 200;
+  return -1;
+}
+function phaseChain(divId){
+  var d=divOf(divId);
+  if(!d || d.type==="cup" || !(d.tier>=1 && d.tier<=3)) return null;
+  var pick=function(x){ return (x.groups||[]).filter(function(g){return phaseRank(g[1])>=0}) };
+  var gs=pick(d), borrowed=false;
+  if(gs.length<2){
+    var prev=DATA.divisions.filter(function(x){ return x.id!==d.id && x.type!=="cup" && x.tier===d.tier && pick(x).length>1 })
+      .sort(function(a,b){ return String(b.season).localeCompare(String(a.season)) })[0];
+    if(!prev) return null;
+    gs=pick(prev); borrowed=true;
+  }
+  gs=gs.slice().sort(function(a,b){ return phaseRank(a[1])-phaseRank(b[1]) });
+  return {phases:gs, borrowed:borrowed};
+}
+function phaseTake(name){
+  var k=String(name).match(/kaya\s*(\d+)/i);
+  return k ? +k[1] : (/final/i.test(name) ? 2 : 0);
+}
+function phaseZones(divId){
+  var ch=phaseChain(divId); if(!ch) return null;
+  var i=0;
+  if(!ch.borrowed){ var g=activeGroup(divId); i=ch.phases.map(function(p){return p[0]}).indexOf(g); if(i<0) return null; }
+  var pa=LANG==="pa", next=ch.phases[i+1], z=[];
+  if(next){ var n=phaseTake(next[1]); if(n) z.push({from:1,to:n,cls:"z-go",color:"var(--win,#1e9e5a)",label:(pa?"Ta pasa pa ":"Goes to ")+next[1]}); }
+  else z.push({from:1,to:1,cls:"z-champ",color:"var(--gold)",label:pa?"Kampion":"Champion"});
+  if(i===0 && divOf(divId).tier===1) z.push({last:1,cls:"z-rel",color:"var(--loss)",label:pa?"Ta baha":"Relegated"});
+  return z;
+}
+function seasonPath(divId){
+  var ch=phaseChain(divId); if(!ch || ch.phases.length<2) return "";
+  var pa=LANG==="pa", cur=ch.borrowed?ch.phases[0][0]:activeGroup(divId), last=ch.phases.length-1;
+  var steps=ch.phases.map(function(p,i){
+    var on=p[0]===cur;
+    return '<span style="padding:3px 9px;border-radius:999px;font-size:12px;white-space:nowrap;'+(on?'background:var(--accent,#2f6fed);color:#fff;font-weight:700':'border:1px solid var(--line,rgba(127,127,127,.3))')+'">'+esc(p[1])+'</span>';
+  }).join('<span class="muted" style="font-size:12px">\u2192</span>');
+  var bits=ch.phases.map(function(p,i){
+    if(i===last) return p[1]+": "+(pa?"ganadó ta kampion":"the winner is champion");
+    var n=phaseTake(ch.phases[i+1][1]);
+    return p[1]+": "+(pa?("e promé "+n+" ta pasa pa "):("top "+n+" go to "))+ch.phases[i+1][1];
+  });
+  if(divOf(divId).tier===1) bits[0]+=pa?"; e último ta baha":"; the last club is relegated";
+  return '<div class="card" style="margin-bottom:12px;padding:12px 16px">'+
+    '<div style="font-weight:800;font-size:13px;margin-bottom:8px">'+esc(pa?"Kon e temporada ta bai":"How the season works")+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">'+steps+'</div>'+
+    '<p class="muted" style="font-size:12px;margin:8px 0 0">'+esc(bits.join(". ")+".")+'</p></div>';
+}
 function zoneClass(divId,pos,total){
+  var pz=phaseZones(divId);
+  if(pz){
+    if(!matchesOf(divId).some(finished) && !storedTable(divId)) return "";
+    for(var zi=0; zi<pz.length; zi++){ var zz=pz[zi]; if(zz.last ? pos>total-zz.last : (pos>=zz.from && pos<=zz.to)) return zz.cls; }
+    return "";
+  }
   if(groupWinnersFinal(divId)) return matchesOf(divId).some(finished) && pos===1 ? "z-champ" : "";
   /* Before a ball is kicked the table is just alphabetical, so colouring the
      top row champion and the bottom rows relegated would be saying something
@@ -2344,15 +2411,18 @@ function tableCard(divId,mode,compact){
       '<td>'+(r.gd>0?"+":"")+r.gd+'</td><td class="pts">'+r.pts+'</td>'+
       ((compact||noForm)?'':'<td>'+formStrip(r.form)+'</td>')+'</tr>';
   }).join("");
-  var legend = groupWinnersFinal(divId)
+  var pzl = phaseZones(divId);
+  var legend = pzl
+    ? '<div class="legend">'+pzl.map(function(z){ return '<span><i style="background:'+z.color+'"></i>'+esc(z.label)+'</span>' }).join("")+'</div>'
+    : groupWinnersFinal(divId)
     ? '<div class="legend"><span><i style="background:var(--gold)"></i>'+esc(LANG==="pa"?"Ta bai final":"Goes to the final")+'</span></div>'
     : d.type==="cup"
     ? '<div class="legend"><span><i style="background:var(--gold)"></i>'+esc(LANG==="pa"?"Ta pasa":"Advances")+'</span>'+
       '<span><i style="background:#E08A0C"></i>'+esc(LANG==="pa"?"Por pasa komo mihó segundo":"Best runner-up")+'</span></div>'
     : '<div class="legend">'+
-    '<span><i style="background:var(--gold)"></i>'+esc(d.tier===1?T("champion"):T("promotion"))+'</span>'+
+    '<span><i style="background:var(--gold)"></i>'+esc(d.tier===1||!(d.up&&d.up.length)?T("champion"):T("promotion"))+'</span>'+
     (d.tier===1?'<span><i style="background:var(--accent)"></i>'+esc(T("cfu"))+'</span>':'')+
-    '<span><i style="background:#E08A0C"></i>'+esc(T("playoff"))+'</span>'+
+    (d.tier===1||(d.po&&d.po.length)?'<span><i style="background:#E08A0C"></i>'+esc(T("playoff"))+'</span>':'')+
     (d.tier===1?'<span><i style="background:var(--loss)"></i>'+esc(T("relegation"))+'</span>':'')+'</div>';
   return '<div class="card"><div class="tbl-wrap"><table class="lt"><thead><tr>'+
     '<th>'+esc(T("pos"))+'</th><th>'+esc(T("club"))+'</th><th>'+esc(T("played"))+'</th><th>'+esc(T("won"))+'</th><th>'+esc(T("drawn"))+'</th><th>'+esc(T("lost"))+'</th>'+
@@ -2705,6 +2775,7 @@ function viewTable(){
      (groupsOf(R.div).length>1?'<span class="sub">'+esc(groupName(R.div,activeGroup(R.div)))+'</span>':'')+
      (liveNow(d)?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
   h+=roadToFinal(R.div);
+  h+=seasonPath(R.div);
   h+=tableCard(R.div,stored?"all":tableMode,false);
   if(useOurTable(R.div)){
     h+='<p class="muted" style="font-size:11.5px;margin:8px 2px">'+
