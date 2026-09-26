@@ -323,6 +323,7 @@ a{color:var(--accent);text-decoration:none}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
 .kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .kobracket{position:relative;margin:0 auto}
+.clk{font-variant-numeric:tabular-nums}
 .kolines{position:absolute;inset:0;fill:none;stroke:var(--line);stroke-width:1.5}
 .kohead{position:absolute;top:0;font-size:9.5px;font-weight:800;letter-spacing:.04em;
   text-transform:uppercase;color:var(--ink-3);text-align:center;line-height:1.1}
@@ -1339,6 +1340,21 @@ function minuteLabel(o){
   if(o.h1At) return mn > 45 ? "45+" + (mn - 45) : mn + "\u2032";
   return mn ? mn + "\u2032" : T("live");
 }
+/* The running clock on screen, to the second: 23:07, 45+2:15, 67:12, 90+4:03.
+   Worked out from the same whistle times as the minute, so every phone shows
+   the same second. Notifications and goal times keep the plain minute (67'). */
+function clockLabel(o){
+  if(!o) return "";
+  if(o.status === "ht") return "HT";
+  var anchor = o.h2At || o.h1At, t = anchor ? Date.parse(anchor) : 0;
+  if(!t) return minuteLabel(o);
+  var secs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  var base = o.h2At ? 45 : 0, cap = o.h2At ? 90 : 45;
+  var total = Math.min(130 * 60, base * 60 + secs), mm = Math.floor(total / 60), ss = total % 60;
+  var two = function(n){ return (n < 10 ? "0" : "") + n };
+  if(mm >= cap) return cap + "+" + (mm - cap) + ":" + two(ss);
+  return two(mm) + ":" + two(ss);
+}
 /* Wherever the minute is on screen, find the freshest thing that knows it. */
 function clockSrc(id){
   var x = LIVE.byId[id];
@@ -1350,18 +1366,18 @@ function clockSrc(id){
   return { status: m.ht ? "ht" : m.status, minute: m.minute, h1At: m.h1At, h2At: m.h2At };
 }
 function clockSpan(id){
-  return '<span data-clk="' + esc(id) + '">' + esc(minuteLabel(clockSrc(id))) + '</span>';
+  return '<span class="clk" data-clk="' + esc(id) + '">' + esc(clockLabel(clockSrc(id))) + '</span>';
 }
 /* Ticking the text only, never a re-render: a re-render would wipe whatever the
    referee is halfway through typing. */
 function clockTick(){
   var els = document.querySelectorAll("[data-clk]");
   for(var i = 0; i < els.length; i++){
-    var lab = minuteLabel(clockSrc(els[i].getAttribute("data-clk")));
+    var lab = clockLabel(clockSrc(els[i].getAttribute("data-clk")));
     if(els[i].textContent !== lab) els[i].textContent = lab;
   }
 }
-setInterval(function(){ if(!document.hidden) clockTick() }, 5000);
+setInterval(function(){ if(!document.hidden) clockTick() }, 1000);
 document.addEventListener("visibilitychange", function(){ if(!document.hidden) clockTick() });
 
 function refGuessMinute(mid){
