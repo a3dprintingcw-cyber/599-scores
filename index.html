@@ -1002,7 +1002,10 @@ function api(path, opts){
    A ping when a match kicks off and when a goal goes in, the way SofaScore does
    it. Nothing is ever sent without the person asking for it first, and each
    thing is only ever announced once. */
-var NOTIF = lsGet("kf.notif", null) || {on:false,kick:true,goal:true,ht:false,ft:true,mine:false};
+var NOTIF = lsGet("kf.notif", null) || {on:false,kick:true,goal:true,ht:false,ft:true,mine:false,remind:true};
+/* The 30 minute reminder came later: phones that saved their settings before it
+   existed get it switched on, like everyone else. */
+if(NOTIF.remind===undefined) NOTIF.remind=true;
 var notifSeen = {}, notifReady = false;
 /* Already allowed at the browser level and never set up in here: take that as a
    yes, rather than showing somebody a screen of switches that are all off. */
@@ -1212,6 +1215,7 @@ function notifCard(){
       '<input type="checkbox" data-notif="'+k+'" style="width:auto"'+(NOTIF[k]?' checked':'')+'> '+esc(label)+'</label>';
   }
   h += row("on",   LANG==="pa"?"Notifikashon sendí":"Notifications on");
+  h += row("remind", LANG==="pa"?"30 minüt promé ku mi klub hunga":"30 minutes before my club plays");
   h += row("kick", LANG==="pa"?"Ora e partido kuminsá":"When a match kicks off");
   h += row("goal", LANG==="pa"?"Ora un gol kai":"When a goal goes in");
   h += row("ht",   LANG==="pa"?"Mitar tempo":"Half time");
