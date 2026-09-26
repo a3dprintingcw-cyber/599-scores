@@ -788,7 +788,7 @@ function mergeNewSeasons(){
     DATA.divisions.push({
       id:n.id, name:n.name||n.id, short:n.short||n.name||n.id, en:n.en||n.name||n.id,
       type:n.type||"league", season:String(n.season||""), status:n.status||"live",
-      tier:+n.tier||0, cfu:+n.cfu||0, groups:n.groups||[], roster:(n.clubs||[]).slice(), fresh:true
+      tier:+n.tier||0, cfu:+n.cfu||0, groups:n.groups||[], roster:(n.clubs||[]).slice(), fresh:true, final:n.final||null
     });
     have[n.id]=1;
   });
@@ -1856,7 +1856,9 @@ function standings(divId,mode){
   list.forEach(function(r,i){r.pos=i+1; r.form=r.form.slice(-5)});
   return list;
 }
+function groupWinnersFinal(divId){ var d=divOf(divId); return !!(d && d.final && d.final.rule==="groupwinners") }
 function zoneClass(divId,pos,total){
+  if(groupWinnersFinal(divId)) return matchesOf(divId).some(finished) && pos===1 ? "z-champ" : "";
   /* Before a ball is kicked the table is just alphabetical, so colouring the
      top row champion and the bottom rows relegated would be saying something
      false about real clubs. */
@@ -2331,7 +2333,9 @@ function tableCard(divId,mode,compact){
       '<td>'+(r.gd>0?"+":"")+r.gd+'</td><td class="pts">'+r.pts+'</td>'+
       ((compact||noForm)?'':'<td>'+formStrip(r.form)+'</td>')+'</tr>';
   }).join("");
-  var legend = d.type==="cup"
+  var legend = groupWinnersFinal(divId)
+    ? '<div class="legend"><span><i style="background:var(--gold)"></i>'+esc(LANG==="pa"?"Ta bai final":"Goes to the final")+'</span></div>'
+    : d.type==="cup"
     ? '<div class="legend"><span><i style="background:var(--gold)"></i>'+esc(LANG==="pa"?"Ta pasa":"Advances")+'</span>'+
       '<span><i style="background:#E08A0C"></i>'+esc(LANG==="pa"?"Por pasa komo mihó segundo":"Best runner-up")+'</span></div>'
     : '<div class="legend">'+
@@ -2344,6 +2348,79 @@ function tableCard(divId,mode,compact){
     (compact?'':'<th>'+esc(T("gf"))+'</th><th>'+esc(T("ga"))+'</th>')+
     '<th>'+esc(T("gd"))+'</th><th>'+esc(T("pts"))+'</th>'+((compact||noForm)?'':'<th>'+esc(T("form"))+'</th>')+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>'+legend+'</div>';
+}
+/* Road to the final, for a cup whose group winners meet in a final (the
+   women's Kopa). Everything is worked out from the fixtures: a club is through
+   once nobody else in its group can still reach its points, out once it can no
+   longer reach the leader's, and in the race otherwise. Level on points is left
+   as "in the race" on purpose, since the table splits ties on goals. */
+function groupRace(divId, g){
+  var ms=matchesOf(divId).filter(function(m){return m.group===g});
+  var t={};
+  ms.forEach(function(m){ [m.home,m.away].forEach(function(c){ if(!t[c]) t[c]={id:c,pts:0,gd:0,gf:0,left:0,next:null} }) });
+  ms.forEach(function(m){
+    var h=t[m.home], a=t[m.away];
+    if(m.status==="ft"){
+      h.gf+=m.hs; a.gf+=m.as; h.gd+=m.hs-m.as; a.gd+=m.as-m.hs;
+      if(m.hs>m.as) h.pts+=3; else if(m.hs<m.as) a.pts+=3; else { h.pts++; a.pts++ }
+    } else {
+      h.left++; a.left++;
+      [[h,m.away],[a,m.home]].forEach(function(x){
+        if(!x[0].next || (m.date+m.time)<(x[0].next.date+x[0].next.time)) x[0].next={date:m.date,time:m.time,opp:x[1]};
+      });
+    }
+  });
+  var list=Object.keys(t).map(function(k){ var r=t[k]; r.max=r.pts+3*r.left; return r });
+  list.sort(function(x,y){ return y.pts-x.pts || y.gd-x.gd || y.gf-x.gf || club(x.id).short.localeCompare(club(y.id).short) });
+  var done=list.length && list.every(function(r){return r.left===0});
+  list.forEach(function(r,i){
+    var others=list.filter(function(o){return o!==r});
+    if(done) r.state = i===0 ? "through" : "out";
+    else if(others.every(function(o){return o.max<r.pts})) r.state="through";
+    else if(others.some(function(o){return o.pts>r.max})) r.state="out";
+    else r.state="race";
+  });
+  var winner=list.filter(function(r){return r.state==="through"})[0]||null;
+  var top=list.filter(function(r){return list.length && r.pts===list[0].pts && r.state!=="out"});
+  return {list:list, winner:winner, top:top, played:ms.some(finished)};
+}
+function roadToFinal(divId){
+  if(!groupWinnersFinal(divId)) return "";
+  var d=divOf(divId), f=d.final, pa=LANG==="pa";
+  var gs=groupsOf(divId).filter(function(g){return g[0]!=="__ko"});
+  if(gs.length<2) return "";
+  var races=gs.map(function(g){ return {id:g[0], name:g[1], r:groupRace(divId,g[0])} });
+  var chip=function(st){
+    var c = st==="through" ? ["var(--win,#1e9e5a)", pa?"Den final":"In the final"]
+          : st==="out"     ? ["var(--loss,#c0392b)", pa?"Afó":"Out"]
+          :                  ["var(--muted,#8b9099)", pa?"Ainda den e bataya":"Still in the race"];
+    return '<span style="font-size:11px;font-weight:700;color:'+c[0]+';white-space:nowrap">'+esc(c[1])+'</span>';
+  };
+  var side=function(g){
+    var r=g.r, lab=(pa?"Ganadó ":"Winner ")+g.name;
+    if(r.winner) return '<div style="text-align:center">'+crest(r.winner.id,"lg")+'<div style="font-weight:800;margin-top:6px">'+esc(club(r.winner.id).short)+'</div><div class="muted" style="font-size:11px">'+esc(lab)+'</div></div>';
+    var now = r.played && r.top.length ? (r.top.length===1
+        ? (pa?"Aworaki: ":"Leading now: ")+club(r.top[0].id).short
+        : (pa?"Igual aworaki: ":"Level now: ")+r.top.map(function(x){return club(x.id).short}).join(" & ")) : "";
+    return '<div style="text-align:center"><div style="font-weight:800">'+esc(lab)+'</div>'+(now?'<div class="muted" style="font-size:11px;margin-top:4px">'+esc(now)+'</div>':'')+'</div>';
+  };
+  var when=f.date?(fmtDate(f.date,true)+(f.time?" · "+f.time:"")+(f.venue?" · "+f.venue:"")):"";
+  var h='<div class="card" style="margin-bottom:12px;padding:14px 16px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">\u{1F3C6}</span><b style="font-size:15px">'+esc(pa?"Kaminda pa final":"Road to the final")+'</b>'+(when?'<span class="muted" style="margin-left:auto;font-size:12px">'+esc(when)+'</span>':'')+'</div>';
+  h+='<p class="muted" style="font-size:12.5px;margin:0 0 12px">'+esc(pa
+    ? "Dos grupo. Kada ekipo ta hunga un biaha kontra kada otro ekipo den su grupo. E dos ganadónan di grupo ta topa otro den final. Den nos tabel, ekiponan igual na punto ta wòrdu separá pa diferensia di gol, despues pa gol skor."
+    : "Two groups. Every team plays each other team in its group once. The two group winners meet in the final. In our table, teams level on points are split by goal difference, then goals scored.")+'</p>';
+  h+='<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line,rgba(127,127,127,.2));border-bottom:1px solid var(--line,rgba(127,127,127,.2))">'+
+     side(races[0])+'<div style="font-weight:800;opacity:.6">VS</div>'+side(races[1])+'</div>';
+  h+='<div class="grid g2" style="margin-top:12px">'+races.map(function(g){
+    return '<div><div style="font-weight:800;font-size:13px;margin-bottom:6px">'+esc(g.name)+'</div>'+g.r.list.map(function(x){
+      var nx=x.next?((pa?"Siguiente: ":"Next: ")+(pa?"kontra ":"v ")+club(x.next.opp).short+" · "+fmtDate(x.next.date,true)+(x.next.time?" "+x.next.time:"")):(pa?"Tur wega hugá":"All games played");
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0">'+crest(x.id,"sm")+
+        '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px">'+esc(club(x.id).short)+' <span class="muted" style="font-weight:400">'+x.pts+(pa?" pt":(x.pts===1?" pt":" pts"))+'</span></div>'+
+        '<div class="muted" style="font-size:11px">'+esc(nx)+'</div></div>'+chip(x.state)+'</div>';
+    }).join("")+'</div>';
+  }).join("")+'</div></div>';
+  return h;
 }
 function emptyClubs(divId){
   return '<div class="card"><div class="empty"><h3>'+esc(T("noClubs"))+'</h3><p>'+esc(T("noClubsBody"))+'</p>'+
@@ -2557,6 +2634,7 @@ function viewTable(){
   h+='<div class="sechead" style="margin:0 0 10px"><h2 style="font-size:16px">'+esc(d.name)+'</h2>'+
      (groupsOf(R.div).length>1?'<span class="sub">'+esc(groupName(R.div,activeGroup(R.div)))+'</span>':'')+
      (liveNow(d)?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
+  h+=roadToFinal(R.div);
   h+=tableCard(R.div,stored?"all":tableMode,false);
   if(useOurTable(R.div)){
     h+='<p class="muted" style="font-size:11.5px;margin:8px 2px">'+
