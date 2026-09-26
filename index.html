@@ -1960,7 +1960,29 @@ function seasonPath(divId){
     '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">'+steps+'</div>'+
     '<p class="muted" style="font-size:12px;margin:8px 0 0">'+esc(bits.join(". ")+".")+'</p></div>';
 }
-function zoneClass(divId,pos,total){
+/* Who really went through from a cup group: the clubs that played in the
+   next round, either the knockout of the same competition or the next phase
+   (the Kopa's qualifying groups feed its poules). Worked out from the games, so
+   it is right however many runners-up went on. Null while that next round has
+   not started. */
+function cupAdvanced(divId){
+  var d=divOf(divId); if(!d || d.type!=="cup") return null;
+  var own=DATA.matches.filter(function(m){ return m.div===divId });
+  var grp=own.filter(function(m){ return !m.ko });
+  var out={}, any=false;
+  own.forEach(function(m){ if(m.ko){ out[m.home]=1; out[m.away]=1; any=true } });
+  if(!any && grp.length){
+    var last=grp.reduce(function(a,m){ return m.date>a?m.date:a },"");
+    var ck=compKeyOf(divId);
+    DATA.matches.forEach(function(m){
+      if(m.div!==divId && m.date>last && DV[m.div] && compKeyOf(m.div)===ck){ out[m.home]=1; out[m.away]=1; any=true }
+    });
+  }
+  return any ? out : null;
+}
+function zoneClass(divId,pos,total,cid){
+  var adv=cid ? cupAdvanced(divId) : null;
+  if(adv) return adv[cid] ? "z-go" : "";
   var pz=phaseZones(divId);
   if(pz){
     if(!matchesOf(divId).some(finished) && !storedTable(divId)) return "";
@@ -2456,7 +2478,7 @@ function tableCard(divId,mode,compact){
   if(stored) compact=compact||false;
   var noForm=stored&&!st.some(function(r){return r.form&&r.form.length});
   var rows=st.map(function(r){
-    var z=zoneClass(divId,r.pos,n);
+    var z=zoneClass(divId,r.pos,n,r.id);
     return '<tr class="'+z+'"><td class="postn">'+r.pos+'</td>'+
       '<td><button class="teamcell" data-go="club/'+r.id+'">'+crest(r.id,"sm")+'<span class="nm">'+(follows(r.id)?'<span class="favdot">\u2605</span>':'')+esc(club(r.id).short)+'</span></button></td>'+
       '<td>'+r.p+'</td><td>'+r.w+'</td><td>'+r.d+'</td><td>'+r.l+'</td>'+
@@ -2465,6 +2487,7 @@ function tableCard(divId,mode,compact){
       ((compact||noForm)?'':'<td>'+formStrip(r.form)+'</td>')+'</tr>';
   }).join("");
   var pzl = phaseZones(divId);
+  if(!pzl && cupAdvanced(divId)) pzl=[{color:"var(--win,#1e9e5a)",label:LANG==="pa"?"A pasa pa siguiente ronda":"Went through to the next round"}];
   var legend = pzl
     ? '<div class="legend">'+pzl.map(function(z){ return '<span><i style="background:'+z.color+'"></i>'+esc(z.label)+'</span>' }).join("")+'</div>'
     : groupWinnersFinal(divId)
