@@ -323,6 +323,34 @@ a{color:var(--accent);text-decoration:none}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
 .kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .kobracket{position:relative;margin:0 auto}
+.lpitch{position:relative;border-radius:14px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.lpsvg{display:block;width:100%;height:auto}
+.lpz{opacity:0;transition:opacity .9s}
+.lpitch.onh .lpzh,.lpitch.ona .lpza{opacity:.22}
+.lpball{transition:transform 2.2s cubic-bezier(.4,.1,.3,1)}
+.lplab{position:absolute;top:50%;left:54%;transform:translateY(-50%);color:#fff;border-left:3px solid #ff4d5e;padding-left:9px;text-shadow:0 1px 6px rgba(0,0,0,.5);transition:left .6s}
+.lpitch.lpl .lplab{left:auto;right:54%;border-left:0;border-right:3px solid #ff4d5e;padding:0 9px 0 0;text-align:right}
+.lplab b{display:block;font-size:17px;line-height:1.1}
+.lplab span{font-size:13.5px;opacity:.95}
+.lpgoal{position:absolute;inset:0;display:grid;place-items:center;font-size:30px;font-weight:900;color:#fff;background:rgba(0,0,0,.35);text-shadow:0 2px 12px rgba(0,0,0,.6);animation:lpg 1s ease-in-out infinite alternate}
+@keyframes lpg{from{transform:scale(1)}to{transform:scale(1.06)}}
+.lpnote{font-size:11px;color:var(--ink-3);text-align:center;margin-top:6px}
+.poll{text-align:center}
+.pollq{font-weight:800;font-size:15px;margin-bottom:10px}
+.pollbtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.pollbtn{padding:11px 6px;border-radius:999px;border:1.5px solid var(--accent);color:var(--ink);background:transparent;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+.pollbtn:hover{background:var(--accent-soft)}
+.pollbar{display:flex;gap:3px;height:7px;margin:4px 0 8px}
+.pollbar i{border-radius:4px;background:var(--line);min-width:6px}
+.pollbar i.pbh{background:var(--accent)}
+.pollbar i.pba{background:#E08A0C}
+.pollbar i.me{box-shadow:0 0 0 2px var(--ink)}
+.pollres{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.pollres span{display:grid;justify-items:center;flex:1}
+.pollres span:first-child{justify-items:start}.pollres span:last-child{justify-items:end}
+.pollres b{font-size:17px;color:var(--ink)}
+.pollres .me b{color:var(--accent)}
+.pollfoot{font-size:11.5px;color:var(--ink-3);margin-top:8px}
 .bwbar{display:block;width:100%;text-align:left;border:0;border-radius:18px;padding:16px 16px 30px;margin:12px 0 4px;color:#fff;background:linear-gradient(135deg,#002B7F 0%,#0a3fae 55%,#002B7F 100%);position:relative;overflow:hidden;cursor:pointer;font:inherit;box-shadow:0 8px 24px rgba(0,43,127,.25)}
 .bwbar::after{content:"";position:absolute;left:0;right:0;bottom:12px;height:6px;background:#F9E814}
 .bwtop{display:flex;align-items:center;gap:12px}
@@ -3876,6 +3904,118 @@ function lineupBlock(m){
     '</div>';
 }
 
+/* ───────── live pitch ─────────
+   An animated pitch under a live score, for atmosphere. The ball and the
+   moves are made up (the caption says so); only the score is real, and a real
+   goal plays a goal animation for the side that scored. */
+var PITCH={};
+function livePitch(m){
+  var hc=club(m.home).c1||"#1e5bd6", ac=club(m.away).c1||"#d23b3b", Q=PITCH[m.id]&&PITCH[m.id].x!=null?PITCH[m.id]:null;
+  var st='';
+  for(var i=0;i<10;i++) st+='<rect x="'+(2+i*10.1)+'" y="2" width="10.1" height="64" fill="'+(i%2?"#2e7d32":"#338a37")+'"/>';
+  var L='stroke="rgba(255,255,255,.8)" stroke-width=".45" fill="none"';
+  var svg='<svg viewBox="0 0 105 68" class="lpsvg" aria-hidden="true"><rect width="105" height="68" fill="#2b742f"/>'+st+
+    '<rect class="lpz lpzh" x="52.5" y="2" width="50.5" height="64" fill="'+esc(hc)+'"/>'+
+    '<rect class="lpz lpza" x="2" y="2" width="50.5" height="64" fill="'+esc(ac)+'"/>'+
+    '<rect x="2" y="2" width="101" height="64" '+L+'/><line x1="52.5" y1="2" x2="52.5" y2="66" '+L+'/>'+
+    '<circle cx="52.5" cy="34" r="9.15" '+L+'/><circle cx="52.5" cy="34" r=".5" fill="#fff"/>'+
+    '<rect x="2" y="13.84" width="16.5" height="40.32" '+L+'/><rect x="2" y="24.84" width="5.5" height="18.32" '+L+'/>'+
+    '<rect x="86.5" y="13.84" width="16.5" height="40.32" '+L+'/><rect x="97.5" y="24.84" width="5.5" height="18.32" '+L+'/>'+
+    '<rect x="0" y="30.34" width="2" height="7.32" fill="rgba(255,255,255,.55)"/><rect x="103" y="30.34" width="2" height="7.32" fill="rgba(255,255,255,.55)"/>'+
+    '<g class="lpball" style="transform:translate('+(Q?Q.x.toFixed(1):"52.5")+'px,'+(Q?Q.y.toFixed(1):"34")+'px)"><circle r="1.4" fill="#fff" stroke="#111" stroke-width=".35"/></g></svg>';
+  return '<div class="lpitch'+(Q?(Q.side==="h"?" onh":" ona")+(Q.x<52.5?" lpl":""):"")+'" data-pitch="'+esc(m.id)+'">'+svg+
+    '<div class="lplab"><b data-pt>'+esc(Q?Q.lab:"")+'</b><span data-pa>'+esc(Q?Q.act:"")+'</span></div><div class="lpgoal" data-pg hidden></div></div>'+
+    '<div class="lpnote">'+esc(LANG==="pa"?"Animashon pa diversion, e skor so ta real.":"Animation for fun, only the score is real.")+'</div>';
+}
+function pitchTick(){
+  var els=document.querySelectorAll("[data-pitch]");
+  for(var i=0;i<els.length;i++){
+    var el=els[i], mid=el.getAttribute("data-pitch");
+    var m=DATA.matches.filter(function(x){ return x.id===mid })[0]; if(!m) continue;
+    var pa=LANG==="pa", P=PITCH[mid];
+    if(!P) P=PITCH[mid]={side:Math.random()<.5?"h":"a",phase:0,hold:0,hs:m.hs,as:m.as};
+    var x=52.5, y=34, lab="", act="";
+    if(m.hs>P.hs || m.as>P.as){                     /* a real goal */
+      P.goal=m.hs>P.hs?"h":"a"; P.hold=3; P.hs=m.hs; P.as=m.as;
+    }
+    if(P.hold>0 && P.goal){
+      P.hold--;
+      x=P.goal==="h"?103.6:1.4; y=34;
+      lab=club(P.goal==="h"?m.home:m.away).short; act=pa?"GOOOL!":"GOAL!";
+      var g=el.querySelector("[data-pg]"); if(g){ g.hidden=false; g.textContent=(pa?"GOOOL! ":"GOAL! ")+lab }
+      if(!P.hold){ P.goal=""; P.side=P.side==="h"?"a":"h"; P.phase=0; if(g) g.hidden=true }
+    } else if(m.ht){
+      lab=pa?"Pousa":"Half-time"; act="";
+    } else {
+      var g2=el.querySelector("[data-pg]"); if(g2) g2.hidden=true;
+      /* the side in possession mostly keeps the ball and pushes on */
+      if(Math.random()<.22){ P.side=P.side==="h"?"a":"h"; P.phase=0 }
+      else P.phase=Math.min(4,P.phase+(Math.random()<.6?1:0));
+      var r=function(a,b){ return a+Math.random()*(b-a) };
+      var steps=[[r(22,48),r(12,56),"Ball safe","Bala sigur"],[r(55,76),r(10,58),"Attack","Atake"],
+        [r(80,93),r(18,50),"Dangerous attack","Atake peligroso"]];
+      var ends=[[r(96,99),r(29,39),"Shot on goal","Tiro na gol"],[102.5,Math.random()<.5?3:65,"Corner","Korner"],[r(78,85),r(20,48),"Free kick","Tiro liber"]];
+      var pick=P.phase<3?steps[P.phase]:ends[Math.floor(Math.random()*ends.length)];
+      if(P.phase>=3 && Math.random()<.5){ P.side=P.side==="h"?"a":"h"; P.phase=0 }
+      x=pick[0]; y=pick[1]; act=pa?pick[3]:pick[2];
+      if(P.side==="a") x=105-x;
+      lab=club(P.side==="h"?m.home:m.away).short;
+    }
+    P.x=x; P.y=y; P.lab=lab; P.act=act;
+    var ball=el.querySelector(".lpball"); if(ball) ball.style.transform="translate("+x.toFixed(1)+"px,"+y.toFixed(1)+"px)";
+    el.classList.toggle("onh", !m.ht && P.side==="h"); el.classList.toggle("ona", !m.ht && P.side==="a");
+    var t=el.querySelector("[data-pt]"), a=el.querySelector("[data-pa]");
+    if(t) t.textContent=lab; if(a) a.textContent=act;
+    el.classList.toggle("lpl", x<52.5);
+  }
+}
+setInterval(function(){ if(!document.hidden) pitchTick() }, 2600);
+
+/* ───────── who wins? fans vote ─────────
+   One tap: home, draw or away. Votes are counted by a small separate service
+   (scores599-votes), one vote per phone, open until kick off. After voting, or
+   once the game has started, everyone sees the percentages. If the service is
+   not there yet, the card simply does not show. */
+var VOTES={}, VOTEAPI=(typeof API==="string"&&API)?API.replace("scores599-api","scores599-votes"):"";
+function myVotes(){ return lsGet("kf.votes",{})||{} }
+function voteOpen(m){ return m.status==="sched" && new Date(m.date+"T"+(m.time||"00:00")+":00-04:00").getTime()>Date.now() }
+function loadVotes(mid){
+  if(!VOTEAPI || VOTES[mid]==="loading") return;
+  VOTES[mid]="loading";
+  fetch(VOTEAPI+"/votes?m="+encodeURIComponent(mid)).then(function(r){ return r.ok?r.json():null }).then(function(j){
+    VOTES[mid]=(j&&typeof j.h==="number")?j:null; pollRefresh(mid);
+  }).catch(function(){ VOTES[mid]=null });
+}
+function pollCard(m){
+  var v=VOTES[m.id];
+  if(v===undefined){ loadVotes(m.id); return '<div data-poll="'+esc(m.id)+'"></div>' }
+  if(!v || v==="loading") return '<div data-poll="'+esc(m.id)+'"></div>';
+  var pa=LANG==="pa", mine=myVotes()[m.id], open=voteOpen(m), tot=v.h+v.d+v.a;
+  var opts=[["h",club(m.home).short],["d",pa?"Kita":"Draw"],["a",club(m.away).short]];
+  var h='<div data-poll="'+esc(m.id)+'"><div class="hr"></div><div class="poll"><div class="pollq">'+esc(pa?"Ken ta gana?":"Who wins?")+'</div>';
+  if(open && !mine){
+    h+='<div class="pollbtns">'+opts.map(function(o){ return '<button class="pollbtn" data-act="vote" data-m="'+esc(m.id)+'" data-v="'+o[0]+'">'+esc(o[1])+'</button>' }).join("")+'</div>';
+    h+='<div class="pollfoot">'+esc(tot?(tot+(pa?" fan a vota kaba":" fans have voted")):(pa?"Sé e promé ku ta vota":"Be the first to vote"))+'</div>';
+  } else {
+    var pc=function(n){ return tot?Math.round(n*100/tot):0 };
+    h+='<div class="pollbar">'+opts.map(function(o){ var p=pc(v[o[0]]); return '<i class="pb'+o[0]+(mine===o[0]?" me":"")+'" style="flex:'+Math.max(p,3)+'"></i>' }).join("")+'</div>';
+    h+='<div class="pollres">'+opts.map(function(o){ return '<span class="'+(mine===o[0]?"me":"")+'"><b>'+pc(v[o[0]])+'%</b>'+esc(o[1])+'</span>' }).join("")+'</div>';
+    h+='<div class="pollfoot">'+esc((tot+(pa?" voto":" votes"))+(mine?(pa?" · bo a vota":" · you voted"):"")+(open?"":(pa?" · votashon sera":" · voting closed")))+'</div>';
+  }
+  return h+'</div></div>';
+}
+function pollRefresh(mid){
+  var el=document.querySelector('[data-poll="'+mid+'"]'), m=DATA.matches.filter(function(x){return x.id===mid})[0];
+  if(el && m){ var tmp=document.createElement("div"); tmp.innerHTML=pollCard(m); el.replaceWith(tmp.firstChild) }
+}
+function castVote(mid,pick){
+  var mv=myVotes(); if(mv[mid]) return;
+  mv[mid]=pick; lsSet("kf.votes",mv);
+  if(VOTES[mid] && typeof VOTES[mid]==="object") VOTES[mid][pick]++;
+  pollRefresh(mid);
+  fetch(VOTEAPI+"/vote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({m:mid,pick:pick,d:trkDev()})})
+    .then(function(r){ return r.ok?r.json():null }).then(function(j){ if(j&&typeof j.h==="number"){ VOTES[mid]=j; pollRefresh(mid) } }).catch(function(){});
+}
 function openMatch(id){
   var m=DATA.matches.filter(function(x){return x.id===id})[0]; if(!m) return;
   openMatchId=id;
@@ -3887,6 +4027,8 @@ function openMatch(id){
     '<button data-go="club/'+m.away+'" style="display:grid;justify-items:center;gap:6px">'+crest(m.away,"lg")+'<b style="font-size:13px">'+esc(club(m.away).short)+'</b></button>'+
   '</div>';
   h+='<div style="text-align:center;margin-top:10px" class="eyebrow">'+esc(divOf(m.div).name)+' · '+esc(T("matchday"))+' '+m.md+' · '+esc(fmtDate(m.date,true))+'</div>';
+  if(m.status==="live"){ h+='<div style="margin-top:12px">'+livePitch(m)+'</div>'; if(!PITCH[m.id]) setTimeout(pitchTick,400) }
+  h+=pollCard(m);
   var ev=(m.events||[]).slice().sort(function(a,b){return a.min-b.min});
   if(ev.length){
     h+='<div class="hr"></div><div class="tl">'+ev.map(function(e){
@@ -5875,6 +6017,7 @@ document.addEventListener("click",function(ev){
     }
     case "newad": editAd(""); break;
     case "editad": editAd(a.getAttribute("data-a")); break;
+    case "vote": { castVote(a.getAttribute("data-m"), a.getAttribute("data-v")); break; }
     case "newsopen": {
       var nid2=a.getAttribute("data-n"); newsOpen[nid2]=!newsOpen[nid2]; render(); break;
     }
