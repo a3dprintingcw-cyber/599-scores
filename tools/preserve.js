@@ -78,13 +78,33 @@ if (nPrev >= 20 && nNow < nPrev * 0.7) {
    draw; carry the last good ones over rather than letting them vanish. A game
    the FFK has since published under the same pair and date is left out, the
    same way the app would let it step aside. */
-const wdbNow = (now.matches || []).some(m => m.src === 'wdb' && /^w/.test(m.id));
-if (!wdbNow) {
+/* Any game taken from WDBSport that this run did not produce again (their
+   site was down, or it belongs to a finished season the sync no longer reads)
+   is carried over, unless the FFK now has the same pair on the same day. */
+{
   const key = m => m.div + '|' + m.date + '|' + [m.home, m.away].sort().join('|');
   const have = new Set((now.matches || []).map(key));
-  const back = (prev.matches || []).filter(m => /^w/.test(m.id) && m.src === 'wdb' && !have.has(key(m)));
+  const ids = new Set((now.matches || []).map(m => m.id));
+  const back = (prev.matches || []).filter(m => /^w/.test(m.id) && m.src === 'wdb' && !ids.has(m.id) && !have.has(key(m)));
   if (back.length) { now.matches = (now.matches || []).concat(back); kept.push(back.length + ' WDBSport game(s)'); }
 }
+/* Phases the FFK never published (the 2025/26 Kaya 4 and finals) were added by
+   hand. The feed rebuilds each competition's tables and phase list from what it
+   knows, so put back any phase it left out, with its place in the phase list. */
+Object.keys(prev.tables || {}).forEach(id => {
+  const pt = prev.tables[id], nt = now.tables[id];
+  if (!pt || !nt) return;
+  Object.keys(pt).forEach(g => {
+    if (!nt[g] && (pt[g] || []).length) { nt[g] = pt[g]; kept.push('phase ' + id + '/' + g); }
+  });
+});
+(now.divisions || []).forEach(x => {
+  const had = prevDiv[x.id];
+  if (!had) return;
+  (had.groups || []).forEach(g => {
+    if (!(x.groups || []).some(y => y[0] === g[0]) && now.tables[x.id] && now.tables[x.id][g[0]]) (x.groups = x.groups || []).push(g);
+  });
+});
 if (!now.kobracket && prev.kobracket) { now.kobracket = prev.kobracket; kept.push('kobracket'); }
 /* Open fixtures (semis, finals whose teams are not known yet) are entered by
    hand into data.json; no scrape produces them, so every run carries them over. */
