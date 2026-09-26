@@ -112,6 +112,13 @@ if (!now.openties && prev.openties) { now.openties = prev.openties; kept.push('o
 /* Corrections to how the feed splits a season into phases (see the app's
    groupsOf). Entered by hand, so every run carries them over. */
 if (!now.phasefix && prev.phasefix) { now.phasefix = prev.phasefix; kept.push('phasefix'); }
+/* National teams (ids starting nt-) are not FFK clubs, so the feed never
+   lists them. Carry them over, or the Blue Wave's games show as "?". */
+{
+  const haveC = new Set((now.clubs || []).map(c => c.id));
+  const nt = (prev.clubs || []).filter(c => /^nt-/.test(c.id) && !haveC.has(c.id));
+  if (nt.length) { now.clubs = (now.clubs || []).concat(nt); kept.push(nt.length + ' national team(s)'); }
+}
 
 /* The app reads its server address from here too. Losing it would quietly turn
    off live scores, referee sign in and the fan ladder. */
