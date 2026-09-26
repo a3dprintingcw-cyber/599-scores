@@ -2369,8 +2369,11 @@ var BNAV=["home","matches","table","stats","profile"];
 /* ───────── routing ───────── */
 var R={page:"home",div:(DATA.divisions.filter(function(d){return d.status==="live"})[0]||DATA.divisions[0]).id,arg:"",sub:""};
 function parseHash(){
-  var h=(location.hash||"#/home").replace(/^#\/?/,"").split("/");
+  var h=(location.hash||"#/home").replace(/^#\/?/,"").split("/"), was=R.page;
   R.page=h[0]||"home"; R.arg=h[1]||""; R.sub=h[2]||"";
+  /* Matches always opens on All, so every game coming up is there at a glance.
+     A competition picked while on Matches holds until you leave the page. */
+  if(R.page==="matches" && was!=="matches") allComps=true;
   /* A link somebody was sent: #/m/<id> lands on the match itself. */
   if(R.page==="m" && R.arg){
     var want=R.arg;
@@ -2845,7 +2848,7 @@ function dateRail(days,cur,attr){
 var dayDir=1;
 /* The day screen: every competition at once by default, the way a scores app is
    read, with the four filters people expect and one block per competition. */
-var allComps = lsGet("kf.allcomps", true);
+var allComps = true;
 var mFilter = "all";
 var compShut = {};
 
@@ -5683,7 +5686,7 @@ document.addEventListener("click",function(ev){
   if(!a) return;
   var g=a.getAttribute("data-go");
   if(g){ closeModal(); go(g); return }
-  if(a.hasAttribute("data-setcomp")){ allComps=false; lsSet("kf.allcomps",false); setComp(a.getAttribute("data-setcomp")); return }
+  if(a.hasAttribute("data-setcomp")){ allComps=false; setComp(a.getAttribute("data-setcomp")); return }
   if(a.hasAttribute("data-godiv")){ R.div=a.getAttribute("data-godiv"); render(); return }
   if(a.hasAttribute("data-bwdiv")){ var bw=a.getAttribute("data-bwdiv"); if(!(R.page==="national" && nationalFor(R.arg).id===bw)) go("national/"+bw); return }
   if(a.hasAttribute("data-mfilt")){ mFilter=a.getAttribute("data-mfilt"); render(); return }
@@ -5693,7 +5696,7 @@ document.addEventListener("click",function(ev){
     render(); return;
   }
   if(a.hasAttribute("data-alldiv")){
-    allComps=true; lsSet("kf.allcomps",true); if(R.page==="matches")R.arg=""; render(); return;
+    allComps=true; if(R.page==="matches")R.arg=""; render(); return;
   }
   if(a.hasAttribute("data-setdiv")){ R.div=a.getAttribute("data-setdiv"); if(R.page==="matches")R.arg=""; render(); return }
   if(a.hasAttribute("data-day")){ setDay(a.getAttribute("data-day")); return }
