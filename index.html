@@ -1781,6 +1781,17 @@ function koCard(divId){
 
 function groupsOf(id){
   var d=divOf(id), gs=(d.groups||[]).slice();
+  /* data.phasefix hides phases the feed got wrong and a corrected set replaced
+     (Terser 2025/26: a half empty regular table and a stray poule). */
+  var hide=(DATA.phasefix&&DATA.phasefix[id]&&DATA.phasefix[id].hide)||[];
+  if(hide.length) gs=gs.filter(function(g){return hide.indexOf(g[0])<0});
+  /* A league's phases in the order they are played: the feed sometimes lists
+     Kaya 4 before Kaya 6. */
+  if(d && d.type!=="cup" && typeof phaseRank==="function"){
+    gs=gs.map(function(g,i){return {g:g,i:i,r:phaseRank(g[1])}})
+      .sort(function(a,b){ var ra=a.r<0?999:a.r, rb=b.r<0?999:b.r; return ra-rb||a.i-b.i })
+      .map(function(x){return x.g});
+  }
   /* The bracket comes first: in a cup that has reached the knock out, that is
      the thing people open the app for. */
   if(hasKO(id)) gs.unshift(["__ko", LANG==="pa"?"Knock out":"Knockout"]);
@@ -1881,7 +1892,7 @@ function groupWinnersFinal(divId){ var d=divOf(divId); return !!(d && d.final &&
    previous season, since the format stays the same year to year. */
 function phaseRank(name){
   var n=String(name||"").toLowerCase(), k=n.match(/kaya\s*(\d+)/);
-  if(/regular/.test(n)) return 0;
+  if(/regular|poule/.test(n)) return 0;
   if(k) return 100-(+k[1]);
   if(/final/.test(n)) return 200;
   return -1;
@@ -1889,7 +1900,7 @@ function phaseRank(name){
 function phaseChain(divId){
   var d=divOf(divId);
   if(!d || d.type==="cup" || !(d.tier>=1 && d.tier<=3)) return null;
-  var pick=function(x){ return (x.groups||[]).filter(function(g){return phaseRank(g[1])>=0}) };
+  var pick=function(x){ return groupsOf(x.id).filter(function(g){return phaseRank(g[1])>=0}) };
   var gs=pick(d), borrowed=false;
   if(gs.length<2){
     var prev=DATA.divisions.filter(function(x){ return x.id!==d.id && x.type!=="cup" && x.tier===d.tier && pick(x).length>1 })
@@ -1898,7 +1909,18 @@ function phaseChain(divId){
     gs=pick(prev); borrowed=true;
   }
   gs=gs.slice().sort(function(a,b){ return phaseRank(a[1])-phaseRank(b[1]) });
-  return {phases:gs, borrowed:borrowed};
+  /* Stages: the regular season can be split into poules, which run side by
+     side and send their top clubs on together. */
+  var stages=[];
+  gs.forEach(function(g){
+    var r=phaseRank(g[1]), last=stages[stages.length-1];
+    if(last && last.rank===r) last.groups.push(g); else stages.push({rank:r, groups:[g]});
+  });
+  return {phases:gs, stages:stages, borrowed:borrowed};
+}
+function stageName(st, pa){
+  if(st.groups.length===1) return st.groups[0][1];
+  return (pa?"Kampionato regular":"Regular season")+" ("+st.groups.length+" "+(pa?"poule":"poules")+")";
 }
 function phaseTake(name){
   var k=String(name).match(/kaya\s*(\d+)/i);
@@ -1907,24 +1929,27 @@ function phaseTake(name){
 function phaseZones(divId){
   var ch=phaseChain(divId); if(!ch) return null;
   var i=0;
-  if(!ch.borrowed){ var g=activeGroup(divId); i=ch.phases.map(function(p){return p[0]}).indexOf(g); if(i<0) return null; }
-  var pa=LANG==="pa", next=ch.phases[i+1], z=[];
-  if(next){ var n=phaseTake(next[1]); if(n) z.push({from:1,to:n,cls:"z-go",color:"var(--win,#1e9e5a)",label:(pa?"Ta pasa pa ":"Goes to ")+next[1]}); }
+  if(!ch.borrowed){ var g=activeGroup(divId); i=-1;
+    ch.stages.forEach(function(st,k){ if(st.groups.some(function(x){return x[0]===g})) i=k }); if(i<0) return null; }
+  var pa=LANG==="pa", st=ch.stages[i], next=ch.stages[i+1], z=[];
+  if(next){ var nn=stageName(next,pa), n=Math.floor(phaseTake(nn)/st.groups.length);
+    if(n) z.push({from:1,to:n,cls:"z-go",color:"var(--win,#1e9e5a)",label:(pa?"Ta pasa pa ":"Goes to ")+nn}); }
   else z.push({from:1,to:1,cls:"z-champ",color:"var(--gold)",label:pa?"Kampion":"Champion"});
   if(i===0 && divOf(divId).tier===1) z.push({last:1,cls:"z-rel",color:"var(--loss)",label:pa?"Ta baha":"Relegated"});
   return z;
 }
 function seasonPath(divId){
-  var ch=phaseChain(divId); if(!ch || ch.phases.length<2) return "";
-  var pa=LANG==="pa", cur=ch.borrowed?ch.phases[0][0]:activeGroup(divId), last=ch.phases.length-1;
-  var steps=ch.phases.map(function(p,i){
-    var on=p[0]===cur;
-    return '<span style="padding:3px 9px;border-radius:999px;font-size:12px;white-space:nowrap;'+(on?'background:var(--accent,#2f6fed);color:#fff;font-weight:700':'border:1px solid var(--line,rgba(127,127,127,.3))')+'">'+esc(p[1])+'</span>';
+  var ch=phaseChain(divId); if(!ch || ch.stages.length<2) return "";
+  var pa=LANG==="pa", cur=ch.borrowed?ch.phases[0][0]:activeGroup(divId), last=ch.stages.length-1;
+  var steps=ch.stages.map(function(st,i){
+    var on=st.groups.some(function(x){return x[0]===cur});
+    return '<span style="padding:3px 9px;border-radius:999px;font-size:12px;white-space:nowrap;'+(on?'background:var(--accent,#2f6fed);color:#fff;font-weight:700':'border:1px solid var(--line,rgba(127,127,127,.3))')+'">'+esc(stageName(st,pa))+'</span>';
   }).join('<span class="muted" style="font-size:12px">\u2192</span>');
-  var bits=ch.phases.map(function(p,i){
-    if(i===last) return p[1]+": "+(pa?"ganadó ta kampion":"the winner is champion");
-    var n=phaseTake(ch.phases[i+1][1]);
-    return p[1]+": "+(pa?("e promé "+n+" ta pasa pa "):("top "+n+" go to "))+ch.phases[i+1][1];
+  var bits=ch.stages.map(function(st,i){
+    var nm=stageName(st,pa);
+    if(i===last) return nm+": "+(pa?"ganadó ta kampion":"the winner is champion");
+    var nn=stageName(ch.stages[i+1],pa), n=Math.floor(phaseTake(nn)/st.groups.length), each=st.groups.length>1;
+    return nm+": "+(pa?("e promé "+n+(each?" di kada poule":"")+" ta pasa pa "):("top "+n+(each?" of each poule":"")+" go to "))+nn;
   });
   if(divOf(divId).tier===1) bits[0]+=pa?"; e último ta baha":"; the last club is relegated";
   return '<div class="card" style="margin-bottom:12px;padding:12px 16px">'+
@@ -2105,9 +2130,11 @@ function phaseForm(divId,g,cid,rows){
   var mine=DATA.matches.filter(function(m){ return m.div===divId && m.status==="ft" && (m.home===cid||m.away===cid) });
   var tagged=mine.filter(function(m){
     var ph=n(m.phase);
-    return m.group===g || (ph && (ph===gn || ph===gk || (/^final/.test(ph) && /^final/.test(gn))));
+    return m.group===g || (ph && (ph===gn || ph===gk || (/^final/.test(ph) && /^final/.test(gn)) || (/regular/.test(ph) && /regular|poule/.test(gn))));
   });
-  var use = tagged.length ? tagged : mine.filter(function(m){ return inT[m.home] && inT[m.away] && !m.ko });
+  var both = mine.filter(function(m){ return inT[m.home] && inT[m.away] && !m.ko });
+  var untagged = both.filter(function(m){ return !m.phase });
+  var use = tagged.length ? tagged : (untagged.length ? untagged : both);
   return use.sort(function(x,y){ return x.date.localeCompare(y.date)||String(x.time||"").localeCompare(String(y.time||"")) })
     .map(function(m){ var gf=m.home===cid?m.hs:m.as, ga=m.home===cid?m.as:m.hs; return gf>ga?"W":(gf<ga?"L":"D") })
     .slice(-5);
@@ -2341,7 +2368,7 @@ function groupTabs(divId){
   /* Eight poule chips in a row is a wall of buttons nobody reads. Past four
      they go into a dropdown, and the knock out keeps a button of its own
      because that is the one people are looking for. */
-  if(gs.length>4){
+  if(gs.length>(divOf(divId).type==="cup"?4:6)){
     var ko=gs.filter(function(g){ return g[0]==="__ko" })[0];
     var rest=gs.filter(function(g){ return g[0]!=="__ko" });
     var h='<div class="phaserow">';
