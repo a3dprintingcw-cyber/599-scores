@@ -2813,18 +2813,13 @@ function viewTable(){
   }
 
   var h=divTabs(false)+groupTabs(R.div);
-  if(!stored){
-    h+='<div class="tabrail">'+[["all","all"],["home","homeT"],["away","awayT"]].map(function(x){
-      return '<button class="tab" data-tmode="'+x[0]+'" aria-pressed="'+(tableMode===x[0])+'">'+esc(T(x[1]))+'</button>';
-    }).join("")+'</div>';
-  }
   h+='<div style="height:12px"></div>';
   h+='<div class="sechead" style="margin:0 0 10px"><h2 style="font-size:16px">'+esc(d.name)+'</h2>'+
      (groupsOf(R.div).length>1?'<span class="sub">'+esc(groupName(R.div,activeGroup(R.div)))+'</span>':'')+
      (liveNow(d)?'<span class="pill live" style="margin-left:auto"><span class="dot blink"></span>'+esc(T("live"))+'</span>':'<span class="pill" style="margin-left:auto">'+esc(d.season)+'</span>')+'</div>';
   h+=roadToFinal(R.div);
   h+=seasonPath(R.div);
-  h+=tableCard(R.div,stored?"all":tableMode,false);
+  h+=tableCard(R.div,"all",false);
   if(useOurTable(R.div)){
     h+='<p class="muted" style="font-size:11.5px;margin:8px 2px">'+
       esc(LANG==="pa"?"E tabel aki ta kalkulá for di e resultadonan ku e arbiternan a manda: 3 punto pa gana, 1 pa kita, 0 pa perde."
