@@ -1833,9 +1833,12 @@ function rosterOf(divId){
 function standings(divId,mode){
   mode=mode||"all";
   var st=useOurTable(divId) ? null : storedTable(divId);
-  if(st) return st.map(function(r){
-    return {pos:r[0],id:r[1],p:r[2],w:r[3],l:r[4],d:r[5],gf:r[6],ga:r[7],pts:r[8],gd:r[9],cs:0,form:clubForm(r[1],5)};
-  });
+  if(st){
+    var sg=activeGroup(divId);
+    return st.map(function(r){
+      return {pos:r[0],id:r[1],p:r[2],w:r[3],l:r[4],d:r[5],gf:r[6],ga:r[7],pts:r[8],gd:r[9],cs:0,form:phaseForm(divId,sg,r[1],st)};
+    });
+  }
   var rows={};
   /* A cup split into groups with no federation table (the women's Kopa): the
      group on screen is worked out from the fixtures carrying that group, so
@@ -2090,6 +2093,24 @@ function h2h(aId,bId,limit){
   return DATA.matches.filter(function(m){
     return m.status==="ft" && ((m.home===aId&&m.away===bId)||(m.home===bId&&m.away===aId));
   }).sort(function(x,y){return y.date.localeCompare(x.date)}).slice(0,limit||5);
+}
+/* Form in a table means form in that table: the club's last five games in
+   this competition and this phase, not whatever it played last anywhere (a
+   Promé table used to show a club's Kopa results). A game belongs to the phase
+   when it carries that phase, or failing that, when both clubs are in it. */
+function phaseForm(divId,g,cid,rows){
+  var n=function(x){ return String(x||"").toLowerCase().replace(/[^a-z0-9]/g,"") };
+  var gn=n(groupName(divId,g)), gk=n(g);
+  var inT={}; (rows||[]).forEach(function(r){ inT[r[1]]=1 });
+  var mine=DATA.matches.filter(function(m){ return m.div===divId && m.status==="ft" && (m.home===cid||m.away===cid) });
+  var tagged=mine.filter(function(m){
+    var ph=n(m.phase);
+    return m.group===g || (ph && (ph===gn || ph===gk || (/^final/.test(ph) && /^final/.test(gn))));
+  });
+  var use = tagged.length ? tagged : mine.filter(function(m){ return inT[m.home] && inT[m.away] && !m.ko });
+  return use.sort(function(x,y){ return x.date.localeCompare(y.date)||String(x.time||"").localeCompare(String(y.time||"")) })
+    .map(function(m){ var gf=m.home===cid?m.hs:m.as, ga=m.home===cid?m.as:m.hs; return gf>ga?"W":(gf<ga?"L":"D") })
+    .slice(-5);
 }
 function clubForm(id,n){
   var out=[];
