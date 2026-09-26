@@ -3927,21 +3927,22 @@ var SHAREFILE=null;
 function openShare(m){
   var pa=LANG==="pa", url=location.origin+location.pathname+"#/m/"+m.id, txt=shareText(m);
   openModal(pa?"Manda e partido":"Share this game",'<div class="shprev"><div class="muted" style="padding:40px;text-align:center">'+esc(pa?"Ta prepará…":"Preparing…")+'</div></div>',
-    '<button class="btn" data-act="shfile">'+esc(pa?"Manda":"Share")+'</button>'+
-    '<a class="btn ghost" href="https://wa.me/?text='+encodeURIComponent(txt+"\n"+url)+'" target="_blank" rel="noopener">WhatsApp</a>'+
+    '<button class="btn" data-act="shfile">WhatsApp</button>'+
     '<button class="btn ghost" data-act="shsave">'+esc(pa?"Warda potrèt":"Download")+'</button>');
   shareCard(m).then(function(cv){
     var box=document.querySelector(".shprev"); if(!box) return;
     box.innerHTML=''; cv.style.width="100%"; cv.style.height="auto"; cv.style.borderRadius="14px"; box.appendChild(cv);
-    cv.toBlob(function(b){ SHAREFILE={file:new File([b],"599scores-"+m.id+".png",{type:"image/png"}),text:txt,url:url} },"image/png");
+    cv.toBlob(function(b){ SHAREFILE={file:new File([b],"599scores-"+m.id+".jpg",{type:"image/jpeg"}),text:txt,url:url} },"image/jpeg",.9);
   });
 }
+/* WhatsApp's own link can only carry text, so the picture goes through the
+   phone's share menu, where WhatsApp is one tap away. A computer cannot share
+   pictures that way, so there it falls back to the text and link. */
 function shareFile(){
   if(!SHAREFILE) return;
   var f=SHAREFILE, data={files:[f.file],text:f.text+"\n"+f.url};
   if(navigator.canShare && navigator.canShare({files:[f.file]})) navigator.share(data).catch(function(){});
-  else if(navigator.share) navigator.share({title:"599 Scores",text:f.text,url:f.url}).catch(function(){});
-  else saveFile();
+  else window.open("https://wa.me/?text="+encodeURIComponent(f.text+"\n"+f.url),"_blank","noopener");
 }
 function saveFile(){
   if(!SHAREFILE) return;
