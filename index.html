@@ -2651,8 +2651,7 @@ function viewHome(){
   h+='<div class="sechead"><h2>'+esc(T("standings"))+'</h2><span class="sub">'+esc(divOf(R.div).name)+'</span><button class="more" data-go="table">'+esc(T("seeAll"))+'</button></div>';
   /* Same as the Table page: a cup on its knockout shows the bracket, not every
      club in the cup lumped into one long table. */
-  h+=divTabs(false)+groupTabs(R.div)+'<div style="height:10px"></div>'+
-    ((hasKO(R.div) && activeGroup(R.div)==="__ko") ? koBracket(R.div) : tableCard(R.div,"all",true));
+  h+=divTabs(false)+groupTabs(R.div)+'<div style="height:10px"></div>'+standingsBody(R.div);
   h+='<div class="sechead"><h2>'+esc(T("seasonLeaders"))+'</h2><span class="sub">'+esc(divOf(R.div).short)+'</span></div>';
   h+='<div class="grid g2">'+leaderCard(T("topScorers"),st.goals,"",5,"stats")+
       (st.assists.length?leaderCard(T("topAssists"),st.assists,"",5,"stats"):leaderCard(T("cleanSheets"),st.clean,"",5,"stats"))+'</div>';
@@ -2825,6 +2824,17 @@ function viewMatches(){
 }
 
 var tableMode="all";
+/* What sits under the competition and phase buttons, the same on Today and on
+   the Table page: the bracket for a knockout, otherwise the explanation of the
+   season (or the road to a final) and the full table. */
+function standingsBody(divId){
+  if(hasKO(divId) && activeGroup(divId)==="__ko"){
+    var hk=koBracket(divId);
+    if(!/kowait/.test(hk)) hk+=koThrough(divId);
+    return hk;
+  }
+  return roadToFinal(divId)+seasonPath(divId)+tableCard(divId,"all",false);
+}
 function viewTable(){
   var d=divOf(R.div), stored=!!storedTable(R.div);
 
