@@ -34,7 +34,8 @@ const SEASON = 330;                                   /* their "2026-2027" */
    added the day the FFK season starts and WDBSport creates them. */
 const LEAGUES = {
   337: { div: 'kopakorsoufa2026', ko: true },         /* Kopa Kòrsou Knockout */
-  338: { div: 'kopakorsouw2026' },                    /* Kopa Kòrsou (W)      */
+  338: { div: 'kopakorsouw2026',                      /* Kopa Kòrsou (W)      */
+         groups: { 16994: 'A', 10098: 'A', 16996: 'A', 10099: 'B', 10095: 'B', 16995: 'B' } },
   14:  { div: 'promed2026' }, 93: { div: 'promed2026' }, 106: { div: 'promed2026' }, 115: { div: 'promed2026' },
   15:  { div: 'segundad2026' }, 94: { div: 'segundad2026' }, 107: { div: 'segundad2026' }, 114: { div: 'segundad2026' },
   79:  { div: 'terserd2026' }, 180: { div: 'terserd2026' }, 181: { div: 'terserd2026' }, 174: { div: 'terserd2026' }, 111: { div: 'terserd2026' },
@@ -142,6 +143,7 @@ const bare = s => plain(s).replace(/\b(f|femenino|damas?|w|women|senior|ii)\b/g,
       respect: { home: 0, away: 0 }, src: 'wdb'
     };
     if (lg.ko) m.ko = true;
+    if (lg.groups && lg.groups[home] && lg.groups[home] === lg.groups[away]) m.group = lg.groups[home];
     matches.push(m); added++;
     (ourIdx[pairKey(lg.div, home, away)] = ourIdx[pairKey(lg.div, home, away)] || []).push(m);
   }
