@@ -5105,15 +5105,12 @@ function viewArbiter(){
   return h;
 }
 function arbRewards(){
-  var h='<div class="sechead"><h2>'+esc(T("rewards"))+'</h2><span class="sub">'+esc(T("sponsorsIntro"))+'</span></div>';
+  var h='<div class="sechead"><h2>'+esc(T("rewards"))+'</h2></div>';
   h+='<div class="rwdgrid">'+DATA.rewards.slice().sort(function(a,b){return a.cost-b.cost}).map(function(w){
-    var sp=(DATA.sponsors||[]).filter(function(x){return x.id===w.sponsorId})[0];
-    var slot=!sp||sp.open;
-    return '<div class="rwd'+(slot&&w.sponsorId?" slot":"")+'"><div class="rtop"><b>'+esc(LANG==="pa"?w.title_pa:w.title_en)+'</b><span class="cost">'+w.cost+'</span></div>'+
+    return '<div class="rwd"><div class="rtop"><b>'+esc(LANG==="pa"?w.title_pa:w.title_en)+'</b><span class="cost">'+w.cost+'</span></div>'+
       (w.value?'<span class="pill gold">'+esc(w.value)+'</span>':'')+
       ((LANG==="pa"?w.note_pa:w.note_en)?'<p>'+esc(LANG==="pa"?w.note_pa:w.note_en)+'</p>':'')+
-      '<div class="sp">'+(w.sponsorId?('◆ '+esc(slot?T("sponsorOpen"):sp.name)):('◆ '+esc(DATA.fed.abbr)))+
-      '<span style="margin-left:auto;color:var(--ink-3)">'+esc(T("stock"))+': '+w.stock+'</span></div></div>';
+      '<div class="sp"><span style="margin-left:auto;color:var(--ink-3)">'+esc(T("stock"))+': '+w.stock+'</span></div></div>';
   }).join("")+'</div>';
   h+='<div class="sechead"><h2>'+esc(T("howPoints"))+'</h2></div><div class="card">'+
     DATA.divisions.map(function(d){
@@ -5137,10 +5134,6 @@ function arbRewards(){
           '<span style="display:grid;justify-items:end;gap:2px">'+stars5(r.avg)+'<span class="sml">'+r.avg.toFixed(2)+'</span></span></button>';
       }).join("")+'</div>';
   }
-  h+='<div class="sechead"><h2>'+esc(T("sponsorWall"))+'</h2></div><div class="sponwall">'+
-    (DATA.sponsors||[]).map(function(sp){
-      return '<div class="spon">'+esc(sp.open?T("sponsorOpen"):sp.name)+'<small>'+esc(sp.cat||"")+'</small></div>';
-    }).join("")+'</div>';
   return h;
 }
 function openRef(id){
