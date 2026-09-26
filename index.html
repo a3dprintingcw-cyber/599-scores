@@ -2055,7 +2055,8 @@ function zoneClass(divId,pos,total,cid){
   if(dA && dA.advance && dA.advance.n) return (matchesOf(divId).some(finished) && pos<=dA.advance.n) ? "z-go" : "";
   var pz=phaseZones(divId);
   if(pz){
-    if(!matchesOf(divId).some(finished) && !storedTable(divId)) return "";
+    /* The zones show from the first day of the season, like WDBSport does, so
+       fans see straight away which places go on and which go down. */
     for(var zi=0; zi<pz.length; zi++){ var zz=pz[zi]; if(zz.last ? pos>total-zz.last : (pos>=zz.from && pos<=zz.to)) return zz.cls; }
     return "";
   }
