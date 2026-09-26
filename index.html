@@ -342,14 +342,16 @@ a{color:var(--accent);text-decoration:none}
 .pollbtn:hover{background:var(--accent-soft)}
 .pollbar{display:flex;gap:3px;height:7px;margin:4px 0 8px}
 .pollbar i{border-radius:4px;background:var(--line);min-width:6px}
-.pollbar i.pbh{background:var(--accent)}
-.pollbar i.pba{background:#E08A0C}
-.pollbar i.me{box-shadow:0 0 0 2px var(--ink)}
+.pollbar i{background:var(--ink-3);opacity:.55}
+.pollbar i.lit{background:var(--accent);opacity:1}
+.polltot{font-size:13px;color:var(--ink-2);margin-bottom:6px}
+.kocd{display:block;font-size:30px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kotime{display:block;font-size:14px;color:var(--ink-3);margin-top:4px;font-family:inherit}
 .pollres{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;color:var(--ink-2)}
 .pollres span{display:grid;justify-items:center;flex:1}
 .pollres span:first-child{justify-items:start}.pollres span:last-child{justify-items:end}
 .pollres b{font-size:17px;color:var(--ink)}
-.pollres .me b{color:var(--accent)}
+.pollres .lit b,.pollres .lit{color:var(--accent)}
 .pollfoot{font-size:11.5px;color:var(--ink-3);margin-top:8px}
 .bwbar{display:block;width:100%;text-align:left;border:0;border-radius:18px;padding:16px 16px 30px;margin:12px 0 4px;color:#fff;background:linear-gradient(135deg,#002B7F 0%,#0a3fae 55%,#002B7F 100%);position:relative;overflow:hidden;cursor:pointer;font:inherit;box-shadow:0 8px 24px rgba(0,43,127,.25)}
 .bwbar::after{content:"";position:absolute;left:0;right:0;bottom:12px;height:6px;background:#F9E814}
@@ -3998,9 +4000,11 @@ function pollCard(m){
     h+='<div class="pollfoot">'+esc(tot?(tot+(pa?" fan a vota kaba":" fans have voted")):(pa?"Sé e promé ku ta vota":"Be the first to vote"))+'</div>';
   } else {
     var pc=function(n){ return tot?Math.round(n*100/tot):0 };
-    h+='<div class="pollbar">'+opts.map(function(o){ var p=pc(v[o[0]]); return '<i class="pb'+o[0]+(mine===o[0]?" me":"")+'" style="flex:'+Math.max(p,3)+'"></i>' }).join("")+'</div>';
-    h+='<div class="pollres">'+opts.map(function(o){ return '<span class="'+(mine===o[0]?"me":"")+'"><b>'+pc(v[o[0]])+'%</b>'+esc(o[1])+'</span>' }).join("")+'</div>';
-    h+='<div class="pollfoot">'+esc((tot+(pa?" voto":" votes"))+(mine?(pa?" · bo a vota":" · you voted"):"")+(open?"":(pa?" · votashon sera":" · voting closed")))+'</div>';
+    var lit=mine||["h","d","a"].sort(function(x,y){ return v[y]-v[x] })[0];
+    h+='<div class="polltot">'+esc((pa?"Total di voto ":"Total votes ")+tot.toLocaleString("en-US"))+'</div>';
+    h+='<div class="pollbar">'+opts.map(function(o){ var p=pc(v[o[0]]); return '<i class="'+(lit===o[0]?"lit":"")+'" style="flex:'+Math.max(p,3)+'"></i>' }).join("")+'</div>';
+    h+='<div class="pollres">'+opts.map(function(o){ return '<span class="'+(lit===o[0]?"lit":"")+'"><b>'+pc(v[o[0]])+'%</b>'+esc(o[1])+'</span>' }).join("")+'</div>';
+    h+='<div class="pollfoot">'+esc((mine?(pa?"Bo a vota ":"You voted ")+(mine==="d"?(pa?"kita":"draw"):club(mine==="h"?m.home:m.away).short):"")+(open?"":((mine?" · ":"")+(pa?"Votashon sera":"Voting closed"))))+'</div>';
   }
   return h+'</div></div>';
 }
@@ -4016,13 +4020,32 @@ function castVote(mid,pick){
   fetch(VOTEAPI+"/vote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({m:mid,pick:pick,d:trkDev()})})
     .then(function(r){ return r.ok?r.json():null }).then(function(j){ if(j&&typeof j.h==="number"){ VOTES[mid]=j; pollRefresh(mid) } }).catch(function(){});
 }
+/* Time to kick off, to the second, while a game has not started: 07:46:06, or
+   2d 07:46:06 further out. Nothing once the kick off time has passed. */
+function koCountdown(m){
+  if(!m || m.status!=="sched" || !m.time) return "";
+  var diff=new Date(m.date+"T"+m.time+":00-04:00").getTime()-Date.now();
+  if(diff<=0 || diff>7*86400000) return "";
+  var s=Math.floor(diff/1000), d=Math.floor(s/86400), two=function(n){ return (n<10?"0":"")+n };
+  s-=d*86400;
+  return (d?d+"d ":"")+two(Math.floor(s/3600))+":"+two(Math.floor(s%3600/60))+":"+two(s%60);
+}
+setInterval(function(){
+  if(document.hidden) return;
+  var els=document.querySelectorAll("[data-cd]");
+  for(var i=0;i<els.length;i++){
+    var id=els[i].getAttribute("data-cd"), m=DATA.matches.filter(function(x){return x.id===id})[0];
+    var t=koCountdown(m); els[i].textContent=t||(LANG==="pa"?"Awor":"Now");
+  }
+},1000);
 function openMatch(id){
   var m=DATA.matches.filter(function(x){return x.id===id})[0]; if(!m) return;
   openMatchId=id;
   var done=m.status==="ft"||m.status==="live";
   var h='<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;text-align:center">'+
     '<button data-go="club/'+m.home+'" style="display:grid;justify-items:center;gap:6px">'+crest(m.home,"lg")+'<b style="font-size:13px">'+esc(club(m.home).short)+'</b></button>'+
-    '<div><div class="disp" style="font-size:34px;line-height:1">'+(done?m.hs+'<span style="color:var(--ink-3)">–</span>'+m.as:'<span style="font-size:18px;color:var(--ink-3)">'+esc(m.time||"")+'</span>')+'</div>'+
+    '<div><div class="disp" style="font-size:34px;line-height:1">'+(done?m.hs+'<span style="color:var(--ink-3)">–</span>'+m.as:
+      (koCountdown(m)?'<span class="kocd" data-cd="'+esc(m.id)+'">'+esc(koCountdown(m))+'</span><span class="kotime">'+esc(m.time||"")+'</span>':'<span style="font-size:18px;color:var(--ink-3)">'+esc(m.time||"")+'</span>'))+'</div>'+
       '<div style="margin-top:6px">'+statusPill(m)+'</div></div>'+
     '<button data-go="club/'+m.away+'" style="display:grid;justify-items:center;gap:6px">'+crest(m.away,"lg")+'<b style="font-size:13px">'+esc(club(m.away).short)+'</b></button>'+
   '</div>';
