@@ -323,6 +323,7 @@ a{color:var(--accent);text-decoration:none}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
 .kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .kobracket{position:relative;margin:0 auto}
+.kodate{position:absolute;font-size:9.5px;line-height:12px;color:var(--muted,#8b9099);text-align:center;white-space:nowrap;overflow:hidden}
 .clk{font-variant-numeric:tabular-nums}
 .kolines{position:absolute;inset:0;fill:none;stroke:var(--line);stroke-width:1.5}
 .kohead{position:absolute;top:0;font-size:9.5px;font-weight:800;letter-spacing:.04em;
@@ -1679,7 +1680,14 @@ function koBracket(divId){
   var n = cols[cols.length-1].ties.length;
   while(n > 1){
     var prev = cols[cols.length-1], nt = Math.ceil(n / 2), ties = [];
-    for(var j = 0; j < nt; j++) ties.push({ m:null, home:sideOf(prev, 2*j), away:sideOf(prev, 2*j+1) });
+    for(var j = 0; j < nt; j++){
+      var fa = prev.ties[2*j], fb = prev.ties[2*j+1];
+      var feed = [fa && (fa.m ? fa.m.id : fa.ot && fa.ot.id), fb && (fb.m ? fb.m.id : fb.ot && fb.ot.id)];
+      var ot = (DATA.openties||[]).filter(function(o){
+        return o.div===divId && o.home && o.away && feed.indexOf(o.home.from)>=0 && feed.indexOf(o.away.from)>=0;
+      })[0] || null;
+      ties.push({ m:null, ot:ot, home:sideOf(prev, 2*j), away:sideOf(prev, 2*j+1) });
+    }
     cols.push({ name:koRoundName(nt), real:false, ties:ties });
     n = nt;
   }
@@ -1716,6 +1724,9 @@ function koBracket(divId){
       var y = ys[r][j];
       if(t.m) nodes += koSlot(t.m, true, x, y) + koSlot(t.m, false, x, y + SLOT_H + 3);
       else nodes += openSlot(t.home, x, y) + openSlot(t.away, x, y + SLOT_H + 3);
+      var dsrc = t.m ? (t.m.status==="ft" ? null : t.m) : t.ot;
+      if(dsrc && dsrc.date) nodes += '<span class="kodate" style="left:'+x+'px;top:'+(y + TIE_H + 1)+'px;width:'+COL_W+'px">'+
+        esc(fmtDate(dsrc.date,true)+(dsrc.time?" · "+dsrc.time:""))+'</span>';
       if(r + 1 < cols.length){
         var py = ys[r+1][Math.floor(j / 2)];
         if(py !== undefined){
@@ -2509,12 +2520,69 @@ function viewHome(){
   return h;
 }
 
+/* Open fixtures: dates on the calendar whose teams are not known yet (a semi
+   final, a final). data.openties lists them; each side says where its team
+   comes from: {from: match id or open fixture id} for a winner, {group: "A"}
+   for a group winner. Sides fill in by themselves as results come in, and the
+   whole fixture steps aside the moment a real match for it is in the data. */
+function otById(id){ return (DATA.openties||[]).filter(function(o){return o.id===id})[0]||null }
+function otReal(o){
+  var sides=[otSide(o,o.home,1), otSide(o,o.away,1)], ids=sides.map(function(x){return x.id}).filter(Boolean);
+  return DATA.matches.filter(function(m){
+    if(m.div!==o.div) return false;
+    if(ids.length) return (m.date===o.date && (ids.indexOf(m.home)>=0||ids.indexOf(m.away)>=0)) ||
+                          (ids.length===2 && ids.indexOf(m.home)>=0 && ids.indexOf(m.away)>=0 && m.date>=o.date);
+    return m.date===o.date && !m.own;
+  })[0]||null;
+}
+function otSide(o,side,depth){
+  var pa=LANG==="pa", win=pa?"Ganadó ":"Winner ";
+  side=side||{};
+  if(side.group){
+    var r=groupRace(o.div,side.group);
+    return r.winner ? {id:r.winner.id,label:""} : {id:"",label:win+groupName(o.div,side.group)};
+  }
+  if(side.from){
+    var m=DATA.matches.filter(function(x){return x.id===side.from})[0];
+    if(m){ var w=koWinner(m); return w?{id:w,label:""}:{id:"",label:win+(club(m.home).abbr||"?")+"/"+(club(m.away).abbr||"?")} }
+    var ot=otById(side.from);
+    if(ot){
+      var real=(depth||0)<3 ? otReal(ot) : null;
+      if(real){ var w2=koWinner(real); if(w2) return {id:w2,label:""};
+        return {id:"",label:win+(club(real.home).abbr||"?")+"/"+(club(real.away).abbr||"?")} }
+      return {id:"",label:win+(pa?(ot.nameP||ot.name):ot.name).toLowerCase()};
+    }
+  }
+  return {id:"",label:pa?"Pa disidí":"To be decided"};
+}
+function openTies(divId,date){
+  return (DATA.openties||[]).filter(function(o){
+    return (!divId||o.div===divId) && (!date||o.date===date) && !otReal(o);
+  }).sort(function(a,b){ return (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")) });
+}
+function openRow(o,showDate){
+  var pa=LANG==="pa";
+  var side=function(sd){
+    var x=otSide(o,sd,0);
+    if(x.id) return '<span class="mteam">'+crest(x.id)+'<span class="nm">'+esc(club(x.id).short)+'</span></span>';
+    return '<span class="mteam"><span class="crest" style="background:transparent;border:1.5px dashed var(--muted,#8b9099)" aria-hidden="true"></span><span class="nm" style="opacity:.75">'+esc(x.label)+'</span></span>';
+  };
+  return '<div class="mrow" style="cursor:default">'+
+    '<span class="when">'+(showDate?esc(fmtDate(o.date,true))+'<br>':'')+esc(o.time||"")+'</span>'+
+    '<span class="teams">'+side(o.home)+side(o.away)+'</span>'+
+    '<span class="stat"><span class="pill">'+esc(pa?"Pa disidí":"TBD")+'</span><span class="eyebrow">'+esc(divOf(o.div).short)+' · '+esc(pa?(o.nameP||o.name):o.name)+(o.venue?' · '+esc(o.venue):'')+'</span></span>'+
+    '<span class="chev"></span></div>';
+}
 function matchDays(divId){
   var o={};
   matchesOf(divId).forEach(function(m){
     o[m.date]=o[m.date]||{n:0,live:0,mds:{}};
     o[m.date].n++; o[m.date].mds[m.md]=1;
     if(m.status==="live") o[m.date].live++;
+  });
+  openTies(divId).forEach(function(t){
+    o[t.date]=o[t.date]||{n:0,live:0,mds:{}};
+    o[t.date].n++;
   });
   return Object.keys(o).sort().map(function(d){
     return {date:d,n:o[d].n,live:o[d].live,mds:Object.keys(o[d].mds)};
@@ -2593,7 +2661,9 @@ function viewMatches(){
   h+='<div class="dayhead"><h2>'+esc(cur===today()?T("today")+" · "+full:full)+'</h2>'+
      '<span class="sub">'+esc(bits.join(" · "))+'</span>'+
      '<span class="pill acc" style="margin-left:auto">'+esc(allComps?(LANG==="pa"?"Tur kompetishon":"All competitions"):divOf(R.div).short)+'</span></div>';
-  h+=matchesByComp(ms);
+  var ots=openTies(scope,cur).filter(function(){ return mPasses({status:"sched"}) });
+  if(ms.length || !ots.length) h+=matchesByComp(ms);
+  if(ots.length) h+='<div class="card" style="margin-top:'+(ms.length?12:0)+'px">'+ots.map(function(o){return openRow(o,false)}).join("")+'</div>';
   var goals=ms.filter(function(m){return m.status==="ft"||m.status==="live"}).reduce(function(a,m){return a+m.hs+m.as},0);
   if(goals) h+='<div class="card" style="margin-top:12px"><div class="statgrid">'+
       '<div class="stat-t"><div class="k">'+esc(T("totalGoals"))+'</div><div class="v">'+goals+'</div></div>'+
