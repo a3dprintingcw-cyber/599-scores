@@ -1543,6 +1543,7 @@ function liveNow(d){
 function compList(){
   var seen={},out=[];
   DATA.divisions.forEach(function(d){
+    if(d.national) return;          /* the Blue Wave has its own National section */
     var k=compKey(d);
     if(!seen[k]){ seen[k]={key:k,name:compName(d),short:compShort(d),type:d.type,tier:(d.tier==null?9:d.tier),live:false,now:false}; out.push(seen[k]) }
     if(d.status==="live") seen[k].live=true;
@@ -1848,7 +1849,7 @@ function storedTable(divId,g){
   return t[g||activeGroup(divId)]||null;
 }
 function liveComp(){
-  var l=DATA.divisions.filter(function(d){return d.status==="live"})[0];
+  var l=DATA.divisions.filter(function(d){return d.status==="live" && !d.national})[0];
   return (l||DATA.divisions[0]).id;
 }
 function clubsIn(divId){
@@ -2371,9 +2372,18 @@ function renderChrome(){
    }).join("")+
    '<div class="railhead">'+esc(LANG==="pa"?"Kompetishon":"Competitions")+'</div>'+
    compList().map(function(c){
-     return '<button class="navitem" data-setcomp="'+esc(c.key)+'"'+(compKeyOf(R.div)===c.key?' aria-current="page"':'')+'><span class="ic">'+(c.type==="cup"?"\u2606":c.tier)+'</span>'+esc(c.short)+
+     return '<button class="navitem" data-setcomp="'+esc(c.key)+'"'+(R.page!=="national"&&compKeyOf(R.div)===c.key?' aria-current="page"':'')+'><span class="ic">'+(c.type==="cup"?"\u2606":c.tier)+'</span>'+esc(c.short)+
        (c.now?'<span class="badge">'+esc(T("live"))+'</span>':'')+'</button>';
-   }).join("");
+   }).join("")+
+   (function(){
+     var nat=DATA.divisions.filter(function(d){ return d.national && d.status!=="done" });
+     if(!nat.length) return "";
+     return '<div class="railhead">'+esc(LANG==="pa"?"Nashonal":"National")+'</div>'+nat.map(function(d){
+       var tid=d.national.team, lv=matchesOf(d.id).some(function(m){return m.status==="live"});
+       return '<button class="navitem" data-go="national"'+(R.page==="national"?' aria-current="page"':'')+'><span class="ic">'+(C[tid]?crest(tid,"sm"):"\u2606")+'</span>'+esc(d.short||"Blue Wave")+
+         (lv?'<span class="badge">'+esc(T("live"))+'</span>':'')+'</button>';
+     }).join("");
+   })();
 
   bn.style.gridTemplateColumns="repeat("+BNAV.length+",1fr)";
   bn.innerHTML=BNAV.map(function(id){
@@ -4875,6 +4885,22 @@ function blueWaveBar(){
   h+='</div></button>';
   return h;
 }
+/* The national team's own page: the bar, the group table, Curaçao's games and
+   every game in the group. Reached from the National section of the menu or by
+   tapping the bar on Today, never from the club competition buttons. */
+function viewNational(){
+  var d=DATA.divisions.filter(function(x){ return x.national })[0];
+  if(!d) return '<div class="card"><div class="empty"><h3>'+esc(T("nothingYet"))+'</h3></div></div>';
+  var tid=d.national.team, pa=LANG==="pa";
+  var byDate=function(a,b){ return (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")) };
+  var all=matchesOf(d.id).slice().sort(byDate);
+  var mine=all.filter(function(m){ return m.home===tid || m.away===tid });
+  var h=blueWaveBar();
+  h+='<div class="sechead"><h2>'+esc(pa?"Tabel":"Table")+'</h2><span class="sub">'+esc(d.name)+'</span></div>'+standingsBody(d.id);
+  h+='<div class="sechead"><h2>'+esc(pa?"Partidonan di Kòrsou":"Curaçao's games")+'</h2></div>'+matchList(mine,true);
+  h+='<div class="sechead"><h2>'+esc(pa?"Tur partido den e grupo":"Every game in the group")+'</h2></div>'+matchList(all,true);
+  return h;
+}
 function myHero(){
   var id=FAN.primary; if(!id||!C[id]) return "";
   var c=club(id), st=standings(c.div).filter(function(r){return r.id===id})[0];
@@ -5357,6 +5383,9 @@ function centreDay(smooth){
 /* ───────── render ───────── */
 var lastKey="";
 function render(){
+  /* The national team is not one of the competition buttons, so never leave it
+     selected as the competition on the club pages. */
+  if(DV[R.div] && DV[R.div].national) R.div=liveComp();
   renderChrome();
   var v=$("#view"), h="";
   switch(R.page){
@@ -5373,6 +5402,7 @@ function render(){
     case "following": h=viewFollowing(); break;
     case "search": h=viewSearch(); break;
     case "arbiter": h=viewArbiter(); break;
+    case "national": h=viewNational(); break;
     case "referee": h=viewReferee(); break;
     case "admin": h=viewAdmin(); break;
     case "ref": h=viewRef(); break;
@@ -5474,7 +5504,7 @@ document.addEventListener("click",function(ev){
   if(g){ closeModal(); go(g); return }
   if(a.hasAttribute("data-setcomp")){ allComps=false; lsSet("kf.allcomps",false); setComp(a.getAttribute("data-setcomp")); return }
   if(a.hasAttribute("data-godiv")){ R.div=a.getAttribute("data-godiv"); render(); return }
-  if(a.hasAttribute("data-bwdiv")){ allComps=false; R.div=a.getAttribute("data-bwdiv"); go("table"); return }
+  if(a.hasAttribute("data-bwdiv")){ if(R.page!=="national") go("national"); return }
   if(a.hasAttribute("data-mfilt")){ mFilter=a.getAttribute("data-mfilt"); render(); return }
   if(a.hasAttribute("data-compfold")){
     var cf=a.getAttribute("data-compfold");
