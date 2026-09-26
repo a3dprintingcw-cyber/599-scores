@@ -1568,9 +1568,33 @@ function koWinner(m){
    in a round we look for the earlier tie its two clubs came through, so a line
    is only ever drawn where the results say so. Nothing is assumed about who
    meets whom next. */
+/* The official draw, when we have it. data.kobracket[divId] lists the first
+   knock out round as [home, away] pairs in bracket slot order (tools/wdb.js
+   reads it from WDBSport, whose bracket the FFK draw is entered into). In a
+   bracket every tie sits in the slot range of the first round ties that feed
+   it, so ordering each round by the lowest slot among its two clubs puts every
+   round, played or not yet drawn, in the order where neighbours meet next.
+   Without this, rounds nobody has drawn yet are paired by kick off order,
+   which is how Scherpenheuvel got shown against UNDEBA in the 2026 semis. */
+function koSlotOrder(divId, rounds){
+  var kb = DATA.kobracket && DATA.kobracket[divId];
+  if(!Array.isArray(kb) || !kb.length) return false;
+  var pos = {};
+  kb.forEach(function(p, i){ (p || []).forEach(function(c){ if(c) pos[String(c)] = i }) });
+  var at = function(c){ return pos.hasOwnProperty(String(c)) ? pos[String(c)] : 999 };
+  var fits = rounds[0].matches.every(function(m){ return at(m.home) < 999 && at(m.away) < 999 });
+  if(!fits) return false;
+  rounds.forEach(function(R){
+    R.matches.sort(function(a, b){
+      return Math.min(at(a.home), at(a.away)) - Math.min(at(b.home), at(b.away));
+    });
+  });
+  return true;
+}
 function koTree(divId){
   var rounds = koRounds(divId);
   if(!rounds.length) return [];
+  if(koSlotOrder(divId, rounds)) return rounds;
   for(var i = rounds.length - 1; i > 0; i--){
     var parent = rounds[i], child = rounds[i-1];
     var order = [], used = {};
@@ -3832,18 +3856,27 @@ function admMatches(){
   h+='<div class="btnrow" style="margin:14px 0 10px"><button class="btn sm" data-act="newmatch">+ '+esc(T("matches"))+'</button>'+
      '<button class="btn sm" data-act="ownmatch">+ '+esc(LANG==="pa"?"Partido pa un otro dia":"Fixture for another day")+'</button>'+
      '<span class="muted" style="font-size:12px;align-self:center">'+esc(fmtDate(admDay,true))+'</span></div>';
-  if((DATA.ownmatches||[]).length){
+  /* Only the fixtures still doing a job. Once the FFK feed or WDBSport has
+     the same game, ours steps aside and would just sit here as clutter; it is
+     kept in published content (a referee score stored against its id still
+     gets carried across), only hidden from this list. */
+  var ownAll=(DATA.ownmatches||[]);
+  var ownLive=ownAll.filter(function(m){return DATA.matches.some(function(x){return x.id===m.id})});
+  var ownGone=ownAll.length-ownLive.length;
+  if(ownLive.length||ownGone){
     h+='<div class="card" style="margin-bottom:10px"><div class="compgrp">'+
       esc(LANG==="pa"?"Partidonan ku bo a pone":"Fixtures you added")+
-      '<span class="n">'+DATA.ownmatches.length+'</span></div>'+
-      DATA.ownmatches.slice().sort(function(a,b){return (a.date+a.time).localeCompare(b.date+b.time)}).map(function(m){
-        var gone=!DATA.matches.some(function(x){return x.id===m.id});
+      '<span class="n">'+ownLive.length+'</span></div>'+
+      ownLive.slice().sort(function(a,b){return (a.date+a.time).localeCompare(b.date+b.time)}).map(function(m){
         return '<div class="lb"><span class="rk">'+esc((m.time||"").slice(0,5))+'</span>'+
           '<span class="who"><b>'+esc(club(m.home).short)+' v '+esc(club(m.away).short)+'</b>'+
-          '<small>'+esc(fmtDate(m.date,true))+' · '+esc(divOf(m.div).short)+
-          (gone?' · '+esc(LANG==="pa"?"FFK a pone e su mes":"FFK has it now"):'')+'</small></span>'+
+          '<small>'+esc(fmtDate(m.date,true))+' · '+esc(divOf(m.div).short)+'</small></span>'+
           '<button class="btn danger sm" data-act="delown" data-id="'+esc(m.id)+'">'+esc(T("del"))+'</button></div>';
-      }).join("")+'</div>';
+      }).join("")+
+      (ownGone?'<p class="muted" style="font-size:12px;margin:8px 12px">'+esc(LANG==="pa"
+        ? ownGone+" otro ta den e feed di FFK of WDBSport awor, nan no ta mustra aki mas."
+        : ownGone+" more now come from the FFK or WDBSport feed, so they are no longer listed here.")+'</p>':'')+
+      '</div>';
   }
   h+= ms.length? '<div class="card">'+ms.map(function(m){
     return '<button class="lb" data-act="editmatch" data-m="'+m.id+'"><span class="rk">'+esc((m.time||"").slice(0,5))+'</span>'+
