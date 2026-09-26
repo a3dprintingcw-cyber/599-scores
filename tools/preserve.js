@@ -109,6 +109,9 @@ if (!now.kobracket && prev.kobracket) { now.kobracket = prev.kobracket; kept.pus
 /* Open fixtures (semis, finals whose teams are not known yet) are entered by
    hand into data.json; no scrape produces them, so every run carries them over. */
 if (!now.openties && prev.openties) { now.openties = prev.openties; kept.push('openties'); }
+/* Corrections to how the feed splits a season into phases (see the app's
+   groupsOf). Entered by hand, so every run carries them over. */
+if (!now.phasefix && prev.phasefix) { now.phasefix = prev.phasefix; kept.push('phasefix'); }
 
 /* The app reads its server address from here too. Losing it would quietly turn
    off live scores, referee sign in and the fan ladder. */
