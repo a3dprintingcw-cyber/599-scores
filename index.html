@@ -2700,10 +2700,10 @@ function sampleBanner(){
 /* ───────── views ───────── */
 function viewHome(){
   var t=today();
-  var live=DATA.matches.filter(function(m){return m.status==="live"});
-  var todays=DATA.matches.filter(function(m){return m.date===t&&m.status!=="live"}).sort(function(a,b){return (a.time||"").localeCompare(b.time||"")});
-  var recent=DATA.matches.filter(function(m){return m.status==="ft"}).sort(function(a,b){return b.date.localeCompare(a.date)||b.id.localeCompare(a.id)}).slice(0,6);
-  var next=DATA.matches.filter(function(m){return m.status==="sched"&&m.date>t}).sort(function(a,b){return a.date.localeCompare(b.date)}).slice(0,5);
+  var live=DATA.matches.filter(function(m){return m.status==="live"&&!m.hide});
+  var todays=DATA.matches.filter(function(m){return m.date===t&&m.status!=="live"&&!m.hide}).sort(function(a,b){return (a.time||"").localeCompare(b.time||"")});
+  var recent=DATA.matches.filter(function(m){return m.status==="ft"&&!m.hide}).sort(function(a,b){return b.date.localeCompare(a.date)||b.id.localeCompare(a.id)}).slice(0,6);
+  var next=DATA.matches.filter(function(m){return m.status==="sched"&&m.date>t&&!m.hide}).sort(function(a,b){return a.date.localeCompare(b.date)}).slice(0,5);
   var st=statsFor(R.div);
   var h='';
   h+=sampleBanner();
@@ -2804,6 +2804,7 @@ function openRow(o,showDate){
 function matchDays(divId){
   var o={};
   matchesOf(divId).forEach(function(m){
+    if(m.hide) return;            /* kept for the table only, never listed */
     o[m.date]=o[m.date]||{n:0,live:0,mds:{}};
     o[m.date].n++; o[m.date].mds[m.md]=1;
     if(m.status==="live") o[m.date].live++;
@@ -2871,7 +2872,7 @@ function viewMatches(){
   if(!days.length) return divTabs(true)+emptyClubs(R.div);
   var cur=pickDay(days,R.arg);
   var day=days.filter(function(d){return d.date===cur})[0]||days[0];
-  var all=matchesOf(scope).filter(function(m){return m.date===cur})
+  var all=matchesOf(scope).filter(function(m){return m.date===cur&&!m.hide})
     .sort(function(a,b){return (a.time||"").localeCompare(b.time||"")||a.id.localeCompare(b.id)});
   var counts={all:all.length,
     live:all.filter(function(m){return m.status==="live"}).length,
@@ -3737,6 +3738,7 @@ function viewFan(){
   var nowMs=Date.now();
   function koMs(m){ return new Date(m.date+"T"+(m.time||"00:00")+":00-04:00").getTime() }
   var open=DATA.matches.filter(function(m){
+      if(m.hide) return false;
       return m.status==="sched" && m.date>=t && koMs(m)>nowMs;
     }).sort(function(a,b){return a.date.localeCompare(b.date)}).slice(0,8);
   var locked=DATA.matches.filter(function(m){
@@ -5038,7 +5040,7 @@ function blueWaveBar(divId){
   var lvl=d.national.level||"";
   h+='<div class="bwtop">'+crest(tid,"lg")+'<div style="min-width:0"><div class="bweyebrow">'+esc((pa?"Selekshon di Kòrsou":"Curaçao national team")+(lvl?" · "+lvl:""))+'</div>'+
      '<b class="bwname">'+esc(d.short||"Blue Wave")+'</b><div class="bwcomp">'+esc(d.name)+'</div></div>'+
-     (me && me.p ? '<span class="bwpos">'+esc(ord(me.pos))+' · '+me.pts+' '+esc(pa?"pt":"pts")+'</span>' : '')+'</div>';
+     (me && me.p && d.national.table!==false ? '<span class="bwpos">'+esc(ord(me.pos))+' · '+me.pts+' '+esc(pa?"pt":"pts")+'</span>' : '')+'</div>';
   h+='<div class="bwgrid">';
   if(live) h+='<div class="bwcell bwlive"><span class="k"><span class="dot blink"></span> '+esc(T("live"))+'</span><b>'+esc(score(live))+'</b><small>'+clockSpan(live.id)+'</small></div>';
   if(last){
@@ -5069,12 +5071,15 @@ function viewNational(){
   if(!d) return '<div class="card"><div class="empty"><h3>'+esc(T("nothingYet"))+'</h3></div></div>';
   var tid=d.national.team, pa=LANG==="pa";
   var byDate=function(a,b){ return (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")) };
-  var all=matchesOf(d.id).slice().sort(byDate);
+  var all=matchesOf(d.id).filter(function(m){ return !m.hide }).sort(byDate);
   var mine=all.filter(function(m){ return m.home===tid || m.away===tid });
   var h=blueWaveBar(d.id);
-  h+='<div class="sechead"><h2>'+esc(pa?"Tabel":"Table")+'</h2><span class="sub">'+esc(d.name)+'</span></div>'+standingsBody(d.id);
+  /* The other group games are entered with hide set, so the table counts them
+     while only Curaçao's games are listed. national.table false turns the table
+     off if a group's results are ever incomplete. */
+  if(d.national.table!==false) h+='<div class="sechead"><h2>'+esc(pa?"Tabel":"Table")+'</h2><span class="sub">'+esc(d.name)+'</span></div>'+standingsBody(d.id);
   h+='<div class="sechead"><h2>'+esc(pa?"Partidonan di Kòrsou":"Curaçao's games")+'</h2></div>'+matchList(mine,true);
-  h+='<div class="sechead"><h2>'+esc(pa?"Tur partido den e grupo":"Every game in the group")+'</h2></div>'+matchList(all,true);
+  if(all.length>mine.length) h+='<div class="sechead"><h2>'+esc(pa?"Tur partido den e grupo":"Every game in the group")+'</h2></div>'+matchList(all,true);
   return h;
 }
 function myHero(){
