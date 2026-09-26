@@ -2626,7 +2626,10 @@ function viewHome(){
   h+='</div>';
   h+=myFeed();
   h+='<div class="sechead"><h2>'+esc(T("standings"))+'</h2><span class="sub">'+esc(divOf(R.div).name)+'</span><button class="more" data-go="table">'+esc(T("seeAll"))+'</button></div>';
-  h+=divTabs(false)+groupTabs(R.div)+'<div style="height:10px"></div>'+tableCard(R.div,"all",true);
+  /* Same as the Table page: a cup on its knockout shows the bracket, not every
+     club in the cup lumped into one long table. */
+  h+=divTabs(false)+groupTabs(R.div)+'<div style="height:10px"></div>'+
+    ((hasKO(R.div) && activeGroup(R.div)==="__ko") ? koBracket(R.div) : tableCard(R.div,"all",true));
   h+='<div class="sechead"><h2>'+esc(T("seasonLeaders"))+'</h2><span class="sub">'+esc(divOf(R.div).short)+'</span></div>';
   h+='<div class="grid g2">'+leaderCard(T("topScorers"),st.goals,"",5,"stats")+
       (st.assists.length?leaderCard(T("topAssists"),st.assists,"",5,"stats"):leaderCard(T("cleanSheets"),st.clean,"",5,"stats"))+'</div>';
