@@ -5679,7 +5679,7 @@ document.addEventListener("click",function(ev){
   }
   var bg=t.closest&&t.closest("[data-closemodal]");
   if(bg && t===bg){ closeModal(); return }
-  var a=t.closest&&t.closest("[data-go],[data-bwdiv],[data-godiv],[data-setcomp],[data-setdiv],[data-day],[data-daynav],[data-admday],[data-admdaynav],[data-tmode],[data-trf],[data-admclub],[data-grp],[data-match],[data-act],[data-lang]");
+  var a=t.closest&&t.closest("[data-go],[data-bwdiv],[data-alldiv],[data-mfilt],[data-compfold],[data-godiv],[data-setcomp],[data-setdiv],[data-day],[data-daynav],[data-admday],[data-admdaynav],[data-tmode],[data-trf],[data-admclub],[data-grp],[data-match],[data-act],[data-lang]");
   if(!a) return;
   var g=a.getAttribute("data-go");
   if(g){ closeModal(); go(g); return }
