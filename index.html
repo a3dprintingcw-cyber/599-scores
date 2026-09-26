@@ -3190,6 +3190,11 @@ function refList(){
       have[m.id]=1;
     });
   }
+  /* Games kept only for a table (the other Nations League group games) are not
+     for scoring here either. */
+  var hidden={};
+  (DATA.ownmatches||[]).concat(DATA.matches||[]).forEach(function(o){ if(o && o.hide) hidden[o.id]=1 });
+  list=list.filter(function(x){ return !hidden[x.id] });
   var done=function(x){ return (x.state&&x.state.confirmed) || x.feedStatus==="ft" ? 1 : 0 };
   var ahead=function(x){ return String(x.date)>t ? 1 : 0 };
   list.sort(function(a,b){
