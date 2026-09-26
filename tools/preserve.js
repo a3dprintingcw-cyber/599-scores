@@ -73,6 +73,20 @@ if (nPrev >= 20 && nNow < nPrev * 0.7) {
   process.exitCode = 1;
 }
 
+/* What tools/wdb.js adds. If WDBSport could not be reached this run, build.js
+   has written a file without the games only they list and without the knockout
+   draw; carry the last good ones over rather than letting them vanish. A game
+   the FFK has since published under the same pair and date is left out, the
+   same way the app would let it step aside. */
+const wdbNow = (now.matches || []).some(m => m.src === 'wdb' && /^w/.test(m.id));
+if (!wdbNow) {
+  const key = m => m.div + '|' + m.date + '|' + [m.home, m.away].sort().join('|');
+  const have = new Set((now.matches || []).map(key));
+  const back = (prev.matches || []).filter(m => /^w/.test(m.id) && m.src === 'wdb' && !have.has(key(m)));
+  if (back.length) { now.matches = (now.matches || []).concat(back); kept.push(back.length + ' WDBSport game(s)'); }
+}
+if (!now.kobracket && prev.kobracket) { now.kobracket = prev.kobracket; kept.push('kobracket'); }
+
 /* The app reads its server address from here too. Losing it would quietly turn
    off live scores, referee sign in and the fan ladder. */
 if (!now.api && prev.api) { now.api = prev.api; kept.push('api'); }
