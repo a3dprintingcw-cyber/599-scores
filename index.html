@@ -323,6 +323,22 @@ a{color:var(--accent);text-decoration:none}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
 .kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .kobracket{position:relative;margin:0 auto}
+.bwbar{display:block;width:100%;text-align:left;border:0;border-radius:18px;padding:16px 16px 30px;margin:12px 0 4px;color:#fff;background:linear-gradient(135deg,#002B7F 0%,#0a3fae 55%,#002B7F 100%);position:relative;overflow:hidden;cursor:pointer;font:inherit;box-shadow:0 8px 24px rgba(0,43,127,.25)}
+.bwbar::after{content:"";position:absolute;left:0;right:0;bottom:12px;height:6px;background:#F9E814}
+.bwtop{display:flex;align-items:center;gap:12px}
+.bwtop .crest{background:#fff}
+.bweyebrow{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;opacity:.8}
+.bwname{display:block;font-size:20px;line-height:1.15}
+.bwcomp{font-size:12px;opacity:.8}
+.bwpos{margin-left:auto;background:rgba(255,255,255,.16);padding:5px 11px;border-radius:999px;font-weight:800;font-size:13px;white-space:nowrap}
+.bwgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}
+.bwcell{background:rgba(255,255,255,.1);border-radius:12px;padding:10px 12px}
+.bwcell .k{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;margin-bottom:3px}
+.bwcell small{display:block;opacity:.8;font-size:12px;margin-top:2px}
+.bwcell .fchip{display:inline-flex;vertical-align:middle;margin-left:6px}
+.bwcell b{display:inline}
+.bwlive{background:rgba(255,255,255,.2)}
+.bwcount{display:inline-block;margin-top:7px;background:#F9E814;color:#002B7F;font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px}
 .comprow{display:flex;align-items:center;gap:10px}
 .comprow>.tabrail{flex:1 1 auto;min-width:0;margin-bottom:0}
 .comprow>.seasonsel{flex:0 0 auto;margin-left:auto;margin-top:10px}
@@ -793,7 +809,7 @@ function mergeNewSeasons(){
     DATA.divisions.push({
       id:n.id, name:n.name||n.id, short:n.short||n.name||n.id, en:n.en||n.name||n.id,
       type:n.type||"league", season:String(n.season||""), status:n.status||"live",
-      tier:+n.tier||0, cfu:+n.cfu||0, groups:n.groups||[], roster:(n.clubs||[]).slice(), fresh:true, final:n.final||null
+      tier:+n.tier||0, cfu:+n.cfu||0, groups:n.groups||[], roster:(n.clubs||[]).slice(), fresh:true, final:n.final||null, national:n.national||null, advance:n.advance||null
     });
     have[n.id]=1;
   });
@@ -1983,6 +1999,8 @@ function cupAdvanced(divId){
 function zoneClass(divId,pos,total,cid){
   var adv=cid ? cupAdvanced(divId) : null;
   if(adv) return adv[cid] ? "z-go" : "";
+  var dA=divOf(divId);
+  if(dA && dA.advance && dA.advance.n) return (matchesOf(divId).some(finished) && pos<=dA.advance.n) ? "z-go" : "";
   var pz=phaseZones(divId);
   if(pz){
     if(!matchesOf(divId).some(finished) && !storedTable(divId)) return "";
@@ -2487,6 +2505,7 @@ function tableCard(divId,mode,compact){
       ((compact||noForm)?'':'<td>'+formStrip(r.form)+'</td>')+'</tr>';
   }).join("");
   var pzl = phaseZones(divId);
+  if(!pzl && d.advance && d.advance.n) pzl=[{color:"var(--win,#1e9e5a)",label:LANG==="pa"?(d.advance.pa||"Ta pasa"):(d.advance.en||"Goes through")}];
   if(!pzl && cupAdvanced(divId)) pzl=[{color:"var(--win,#1e9e5a)",label:LANG==="pa"?"A pasa pa siguiente ronda":"Went through to the next round"}];
   var legend = pzl
     ? '<div class="legend">'+pzl.map(function(z){ return '<span><i style="background:'+z.color+'"></i>'+esc(z.label)+'</span>' }).join("")+'</div>'
@@ -2628,6 +2647,7 @@ function viewHome(){
   var st=statsFor(R.div);
   var h='';
   h+=sampleBanner();
+  h+=blueWaveBar();
   h+=installCard();
   h+=myHero();
   h+=adFor("home");
@@ -4766,6 +4786,45 @@ function countdown(m){
   var d=Math.floor(diff/86400000), h=Math.floor(diff%86400000/3600000);
   return d? (d+" "+T("days")+(h?" "+h+" "+T("hours"):"")) : (h+" "+T("hours"));
 }
+/* The Blue Wave: the national team gets a bar of its own at the top of Today.
+   Where Curaçao stand in their group, the last result, and the next game with
+   a countdown, or the live score while they play. Everything comes from the
+   competition marked national in published content, and the games are scored
+   live from the referee console like any other. */
+function blueWaveBar(){
+  var d=DATA.divisions.filter(function(x){ return x.national && x.status!=="done" })[0];
+  if(!d) return "";
+  var tid=d.national.team, pa=LANG==="pa";
+  if(!tid || !C[tid]) return "";
+  var ms=matchesOf(d.id).filter(function(m){ return m.home===tid || m.away===tid })
+    .sort(function(a,b){ return (a.date+(a.time||"")).localeCompare(b.date+(b.time||"")) });
+  if(!ms.length) return "";
+  var live=ms.filter(function(m){ return m.status==="live" })[0];
+  var last=ms.filter(function(m){ return m.status==="ft" }).slice(-1)[0];
+  var next=ms.filter(function(m){ return m.status!=="ft" && m.status!=="live" })[0];
+  var me=standings(d.id).filter(function(r){ return r.id===tid })[0];
+  var opp=function(m){ return club(m.home===tid?m.away:m.home).short };
+  var vs=function(m){ return (m.home===tid?(pa?"kontra ":"vs "):(pa?"na ":"at "))+opp(m) };
+  var score=function(m){ return club(m.home).short+" "+m.hs+"-"+m.as+" "+club(m.away).short };
+  var ord=function(n){ return pa ? n+"°" : n+(n===1?"st":n===2?"nd":n===3?"rd":"th") };
+  var h='<button class="bwbar" data-bwdiv="'+esc(d.id)+'">';
+  h+='<div class="bwtop">'+crest(tid,"lg")+'<div style="min-width:0"><div class="bweyebrow">'+esc(pa?"Selekshon di Kòrsou":"Curaçao national team")+'</div>'+
+     '<b class="bwname">Blue Wave</b><div class="bwcomp">'+esc(d.name)+'</div></div>'+
+     (me && me.p ? '<span class="bwpos">'+esc(ord(me.pos))+' · '+me.pts+' '+esc(pa?"pt":"pts")+'</span>' : '')+'</div>';
+  h+='<div class="bwgrid">';
+  if(live) h+='<div class="bwcell bwlive"><span class="k"><span class="dot blink"></span> '+esc(T("live"))+'</span><b>'+esc(score(live))+'</b><small>'+clockSpan(live.id)+'</small></div>';
+  if(last){
+    var gf=last.home===tid?last.hs:last.as, ga=last.home===tid?last.as:last.hs, r=gf>ga?"W":(gf<ga?"L":"D");
+    h+='<div class="bwcell"><span class="k">'+esc(pa?"Último":"Last result")+'</span><b>'+esc(score(last))+'</b> <i class="fchip '+r+'">'+r+'</i><small>'+esc(fmtDate(last.date,true))+'</small></div>';
+  }
+  if(next){
+    h+='<div class="bwcell"><span class="k">'+esc(pa?"Siguiente":"Next up")+'</span><b>'+esc(vs(next))+'</b>'+
+       '<small>'+esc(fmtDate(next.date,true)+(next.time?" · "+next.time:"")+(next.venue?" · "+next.venue:""))+'</small>'+
+       '<span class="bwcount">'+esc((pa?"Den ":"In ")+countdown(next))+'</span></div>';
+  }
+  h+='</div></button>';
+  return h;
+}
 function myHero(){
   var id=FAN.primary; if(!id||!C[id]) return "";
   var c=club(id), st=standings(c.div).filter(function(r){return r.id===id})[0];
@@ -5359,12 +5418,13 @@ document.addEventListener("click",function(ev){
   }
   var bg=t.closest&&t.closest("[data-closemodal]");
   if(bg && t===bg){ closeModal(); return }
-  var a=t.closest&&t.closest("[data-go],[data-godiv],[data-setcomp],[data-setdiv],[data-day],[data-daynav],[data-admday],[data-admdaynav],[data-tmode],[data-trf],[data-admclub],[data-grp],[data-match],[data-act],[data-lang]");
+  var a=t.closest&&t.closest("[data-go],[data-bwdiv],[data-godiv],[data-setcomp],[data-setdiv],[data-day],[data-daynav],[data-admday],[data-admdaynav],[data-tmode],[data-trf],[data-admclub],[data-grp],[data-match],[data-act],[data-lang]");
   if(!a) return;
   var g=a.getAttribute("data-go");
   if(g){ closeModal(); go(g); return }
   if(a.hasAttribute("data-setcomp")){ allComps=false; lsSet("kf.allcomps",false); setComp(a.getAttribute("data-setcomp")); return }
   if(a.hasAttribute("data-godiv")){ R.div=a.getAttribute("data-godiv"); render(); return }
+  if(a.hasAttribute("data-bwdiv")){ allComps=false; R.div=a.getAttribute("data-bwdiv"); go("table"); return }
   if(a.hasAttribute("data-mfilt")){ mFilter=a.getAttribute("data-mfilt"); render(); return }
   if(a.hasAttribute("data-compfold")){
     var cf=a.getAttribute("data-compfold");
