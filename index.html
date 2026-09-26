@@ -323,6 +323,7 @@ a{color:var(--accent);text-decoration:none}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
 .kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .kobracket{position:relative;margin:0 auto}
+.shprev{max-width:360px;margin:0 auto}
 .lpitch{position:relative;border-radius:14px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
 .lpsvg{display:block;width:100%;height:auto}
 .lpz{opacity:0;transition:opacity .9s}
@@ -3834,6 +3835,120 @@ function openModal(title,bodyHTML,footHTML){
     '<div class="sheethead"><h3>'+esc(title)+'</h3><button class="iconbtn" data-act="closemodal" aria-label="Close">✕</button></div>'+
     '<div class="sheetbody">'+bodyHTML+(footHTML?'<div class="btnrow" style="margin-top:16px">'+footHTML+'</div>':'')+'</div></div></div>';
 }
+/* ───────── share cards ─────────
+   A picture of a game to send on WhatsApp, Status or Instagram: the crests, the
+   score (or kick off time, or live with the minute), the scorers, the date and
+   ground, and 599 Scores with the address at the bottom, so every forward is a
+   small advert for the app. Drawn on a canvas in the phone, 1080 x 1350. */
+function loadImg(src){
+  return new Promise(function(res){
+    if(!src){ res(null); return }
+    var im=new Image(); im.onload=function(){ res(im) }; im.onerror=function(){ res(null) }; im.src=src;
+  });
+}
+function rrect(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath() }
+function fitText(g,t,max,size,weight){
+  var f=size; do{ g.font=(weight||800)+" "+f+"px system-ui,-apple-system,Segoe UI,Roboto,sans-serif"; f-=2 }while(g.measureText(t).width>max && f>14);
+}
+function drawCrest(g,im,c,cx,cy,sz){
+  g.save(); g.shadowColor="rgba(0,0,0,.35)"; g.shadowBlur=30; g.shadowOffsetY=10;
+  g.fillStyle="#fff"; rrect(g,cx-sz/2,cy-sz/2,sz,sz,sz*.2); g.fill(); g.restore();
+  if(im){
+    var pad=sz*.12, bw=sz-pad*2, r=Math.min(bw/(im.naturalWidth||bw), bw/(im.naturalHeight||bw)), w=(im.naturalWidth||bw)*r, h=(im.naturalHeight||bw)*r;
+    g.drawImage(im,cx-w/2,cy-h/2,w,h);
+  } else {
+    g.fillStyle=c.c1||"#1d3b8f"; rrect(g,cx-sz/2+sz*.1,cy-sz/2+sz*.1,sz*.8,sz*.8,sz*.16); g.fill();
+    g.fillStyle="#fff"; g.textAlign="center"; g.textBaseline="middle"; fitText(g,c.abbr||"?",sz*.66,sz*.3,900); g.fillText(c.abbr||"?",cx,cy);
+  }
+}
+function shareCard(m){
+  var W=1080, pa=LANG==="pa";
+  var hc=club(m.home), ac=club(m.away), live=m.status==="live", done=m.status==="ft";
+  /* goal scorers, when the referee entered them; without them the card is square */
+  var goals=(m.events||[]).filter(function(e){ return e.t==="goal"||e.t==="pen"||e.t==="og" }).sort(function(a,b){return a.min-b.min});
+  var nm=function(e){ var n=e.p?pname(e.p):(e.pname||""); return n&&n!=="—"?shortName(n)+" "+e.min+"'":"" };
+  var rows=Math.min(5,Math.max(goals.filter(function(e){return nm(e)&&(e.t==="og"?e.team!==m.home:e.team===m.home)}).length,
+                               goals.filter(function(e){return nm(e)&&(e.t==="og"?e.team!==m.away:e.team===m.away)}).length));
+  var H=rows?1350:1080;
+  return Promise.all([loadImg(hc.logo),loadImg(ac.logo)]).then(function(ims){
+    var cv=document.createElement("canvas"); cv.width=W; cv.height=H; var g=cv.getContext("2d");
+    /* background: deep blue with the two clubs' colours glowing in from the sides */
+    var bg=g.createLinearGradient(0,0,0,H); bg.addColorStop(0,"#0d1f4d"); bg.addColorStop(1,"#050b18"); g.fillStyle=bg; g.fillRect(0,0,W,H);
+    [[hc.c1||"#2f6fed",0],[ac.c1||"#e08a0c",W]].forEach(function(x){
+      var rg=g.createRadialGradient(x[1],520,40,x[1],520,620); rg.addColorStop(0,x[0]); rg.addColorStop(1,"rgba(0,0,0,0)");
+      g.globalAlpha=.38; g.fillStyle=rg; g.fillRect(0,0,W,H); g.globalAlpha=1;
+    });
+    g.strokeStyle="rgba(255,255,255,.04)"; g.lineWidth=2;
+    for(var i=-H;i<W;i+=46){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+H,H); g.stroke() }
+    g.textAlign="center"; g.textBaseline="alphabetic";
+    /* competition and status */
+    var d=divOf(m.div), comp=(d.national?d.name.split(" · ")[0]:(d.short||d.name||"")).toUpperCase();
+    g.fillStyle="rgba(255,255,255,.75)"; fitText(g,comp,W-160,40,800); g.fillText(comp,W/2,150);
+    var pill=live?(pa?"LIVE ":"LIVE ")+(m.ht?(pa?"POUSA":"HALF-TIME"):minuteLabel(clockSrc(m.id))):done?(pa?"FINAL":"FULL TIME"):(pa?"KUMINSAMENTU":"KICK-OFF");
+    g.font="800 34px system-ui,-apple-system,Segoe UI,Roboto,sans-serif"; var pw=g.measureText(pill).width+64;
+    g.fillStyle=live?"#e5364b":done?"rgba(255,255,255,.14)":"#F9E814"; rrect(g,W/2-pw/2,188,pw,62,31); g.fill();
+    g.fillStyle=live||done?"#fff":"#0d1f4d"; g.fillText(pill,W/2,232);
+    /* crests and names */
+    drawCrest(g,ims[0],hc,190,470,210); drawCrest(g,ims[1],ac,W-190,470,210);
+    g.fillStyle="#fff"; fitText(g,hc.short,330,42,800); g.fillText(hc.short,190,630); fitText(g,ac.short,330,42,800); g.fillText(ac.short,W-190,630);
+    /* the score, or the kick off time */
+    if(done||live){
+      fitText(g,m.hs+"-"+m.as,330,160,900); g.fillText(m.hs+"-"+m.as,W/2,528);
+    } else {
+      fitText(g,m.time||"vs",320,110,900); g.fillText(m.time||"vs",W/2,500);
+      g.fillStyle="rgba(255,255,255,.8)"; g.font="700 38px system-ui,-apple-system,Segoe UI,Roboto,sans-serif"; g.fillText(fmtDate(m.date,true),W/2,560);
+    }
+    var y0=740; g.font="600 34px system-ui,-apple-system,Segoe UI,Roboto,sans-serif"; g.fillStyle="rgba(255,255,255,.85)";
+    [m.home,m.away].forEach(function(side,k){
+      goals.filter(function(e){ return (e.t==="og")?e.team!==side:e.team===side }).slice(0,5).forEach(function(e,j){
+        var t=nm(e); if(!t) return; g.textAlign=k?"right":"left"; g.fillText("\u26BD "+t,k?W-90:90,y0+j*50);
+      });
+    });
+    g.textAlign="center";
+    /* date and ground */
+    var info=[fmtDate(m.date,true)+(m.time&&(done||live)?" · "+m.time:""), m.venue||""].filter(Boolean).join("  ·  ");
+    g.fillStyle="rgba(255,255,255,.6)"; fitText(g,info,W-160,34,600); g.fillText(info,W/2,H-250);
+    /* 599 Scores signature */
+    var F=H-190;
+    g.fillStyle="rgba(255,255,255,.08)"; g.fillRect(0,F,W,190);
+    g.fillStyle="#1d3b8f"; rrect(g,W/2-250,F+40,110,110,24); g.fill();
+    g.textAlign="left"; g.font="900 50px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+    g.fillStyle="#fff"; g.fillText("59",W/2-240,F+113); g.fillStyle="#F9E814"; g.fillText("9",W/2-240+g.measureText("59").width,F+113);
+    g.fillStyle="#fff"; g.font="900 54px system-ui,-apple-system,Segoe UI,Roboto,sans-serif"; g.fillText("599 Scores",W/2-115,F+90);
+    g.fillStyle="rgba(255,255,255,.7)"; g.font="600 34px system-ui,-apple-system,Segoe UI,Roboto,sans-serif"; g.fillText("599scores.com",W/2-115,F+140);
+    return cv;
+  });
+}
+function shareText(m){
+  var done=m.status==="ft"||m.status==="live";
+  return club(m.home).short+(done?" "+m.hs+" - "+m.as+" ":" vs ")+club(m.away).short+" · 599 Scores";
+}
+var SHAREFILE=null;
+function openShare(m){
+  var pa=LANG==="pa", url=location.origin+location.pathname+"#/m/"+m.id, txt=shareText(m);
+  openModal(pa?"Manda e partido":"Share this game",'<div class="shprev"><div class="muted" style="padding:40px;text-align:center">'+esc(pa?"Ta prepará…":"Preparing…")+'</div></div>',
+    '<button class="btn" data-act="shfile">'+esc(pa?"Manda":"Share")+'</button>'+
+    '<a class="btn ghost" href="https://wa.me/?text='+encodeURIComponent(txt+"\n"+url)+'" target="_blank" rel="noopener">WhatsApp</a>'+
+    '<button class="btn ghost" data-act="shsave">'+esc(pa?"Warda potrèt":"Download")+'</button>');
+  shareCard(m).then(function(cv){
+    var box=document.querySelector(".shprev"); if(!box) return;
+    box.innerHTML=''; cv.style.width="100%"; cv.style.height="auto"; cv.style.borderRadius="14px"; box.appendChild(cv);
+    cv.toBlob(function(b){ SHAREFILE={file:new File([b],"599scores-"+m.id+".png",{type:"image/png"}),text:txt,url:url} },"image/png");
+  });
+}
+function shareFile(){
+  if(!SHAREFILE) return;
+  var f=SHAREFILE, data={files:[f.file],text:f.text+"\n"+f.url};
+  if(navigator.canShare && navigator.canShare({files:[f.file]})) navigator.share(data).catch(function(){});
+  else if(navigator.share) navigator.share({title:"599 Scores",text:f.text,url:f.url}).catch(function(){});
+  else saveFile();
+}
+function saveFile(){
+  if(!SHAREFILE) return;
+  var u=URL.createObjectURL(SHAREFILE.file), a=document.createElement("a");
+  a.href=u; a.download=SHAREFILE.file.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(u) },4000);
+}
 function evLabel(e){
   if(e.t==="goal") return "⚽";
   if(e.t==="pen") return "⚽ "+T("penalty");
@@ -5959,22 +6074,13 @@ document.addEventListener("click",function(ev){
       break;
     }
     /* Curacao passes things round on WhatsApp, so this is how the app travels. */
+    case "shfile": { shareFile(); break; }
+    case "shsave": { saveFile(); break; }
     case "sharematch": {
       var shid=a.getAttribute("data-m");
       var sm2=DATA.matches.filter(function(x){return x.id===shid})[0];
       if(!sm2) break;
-      var done=sm2.status==="ft"||sm2.status==="live";
-      var line=club(sm2.home).short+(done?" "+sm2.hs+" - "+sm2.as+" ":" v ")+club(sm2.away).short;
-      var url=location.origin+location.pathname+"#/m/"+shid;
-      var txt=line+" · 599 Scores";
-      if(navigator.share){
-        navigator.share({title:"599 Scores", text:txt, url:url}).catch(function(){});
-      } else if(navigator.clipboard){
-        navigator.clipboard.writeText(txt+"\n"+url).then(function(){
-          toast(LANG==="pa"?"Kopiá":"Copied");
-        }).catch(function(){ toast(url) });
-      } else toast(url);
-      break;
+      SHAREFILE=null; openShare(sm2); break;
     }
     case "refname2": {
       askScorer(a.getAttribute("data-m"), a.getAttribute("data-team"),
