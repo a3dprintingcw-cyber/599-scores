@@ -4020,12 +4020,12 @@ function castVote(mid,pick){
   fetch(VOTEAPI+"/vote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({m:mid,pick:pick,d:trkDev()})})
     .then(function(r){ return r.ok?r.json():null }).then(function(j){ if(j&&typeof j.h==="number"){ VOTES[mid]=j; pollRefresh(mid) } }).catch(function(){});
 }
-/* Time to kick off, to the second, while a game has not started: 07:46:06, or
-   2d 07:46:06 further out. Nothing once the kick off time has passed. */
+/* Time to kick off, to the second, in the last 24 hours before a game: 07:46:06.
+   Further out, or once the kick off time has passed, the plain time shows. */
 function koCountdown(m){
   if(!m || m.status!=="sched" || !m.time) return "";
   var diff=new Date(m.date+"T"+m.time+":00-04:00").getTime()-Date.now();
-  if(diff<=0 || diff>7*86400000) return "";
+  if(diff<=0 || diff>86400000) return "";
   var s=Math.floor(diff/1000), d=Math.floor(s/86400), two=function(n){ return (n<10?"0":"")+n };
   s-=d*86400;
   return (d?d+"d ":"")+two(Math.floor(s/3600))+":"+two(Math.floor(s%3600/60))+":"+two(s%60);
