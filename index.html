@@ -2273,6 +2273,27 @@ FAN.players = FAN.players || [];
 FAN.primary = FAN.primary || FAN.club || FAN.clubs[0] || "";
 FAN.onboard = !!FAN.onboard;
 function saveFan(){ FAN.club=FAN.primary; lsSet("kf.fan",FAN); prefsPush() }
+/* A prediction only counts once it is confirmed, and a confirmed one cannot be
+   changed. Whatever was typed before this rule existed had already gone to the
+   server, so it is treated as confirmed. */
+(function(){
+  if(!FAN || FAN.pc) return;
+  var p=FAN.preds||{};
+  Object.keys(p).forEach(function(k){ if(p[k] && p[k].h!=="" && p[k].a!=="" && p[k].h!=null && p[k].a!=null) p[k].c=1 });
+  FAN.pc=1; lsSet("kf.fan",FAN);
+})();
+function predDone(mid){ var v=(FAN.preds||{})[mid]; return !!(v && v.c) }
+function predBox(m, w){
+  var v=(FAN.preds||{})[m.id]||{h:"",a:""};
+  if(v.c) return '<span class="stat"><span class="pill ft">'+esc(T("confirmed"))+'</span>'+
+    '<span class="sml" style="font-weight:800">'+esc(String(v.h))+'–'+esc(String(v.a))+'</span></span>';
+  var st='width:'+w+'px;text-align:center;padding:'+(w>46?8:6)+'px;border-radius:8px;border:1px solid var(--line);background:var(--surface)';
+  return '<span style="display:flex;gap:5px;align-items:center;margin-left:auto">'+
+    '<input class="predin" data-pm="'+esc(m.id)+'" data-side="h" type="number" inputmode="numeric" min="0" max="20" value="'+esc(v.h)+'" style="'+st+'">'+
+    '<span class="muted">–</span>'+
+    '<input class="predin" data-pm="'+esc(m.id)+'" data-side="a" type="number" inputmode="numeric" min="0" max="20" value="'+esc(v.a)+'" style="'+st+'">'+
+    '<button class="btn sm" data-act="predconfirm" data-m="'+esc(m.id)+'">'+esc(L("Konfirmá","Confirm"))+'</button></span>';
+}
 
 /* What somebody follows belongs to the account, not to the handset. On this
    phone it is saved straight away, and on the account a moment later. */
@@ -2334,7 +2355,7 @@ function predScore(){
   var pts=0,exact=0,ok=0,total=0;
   Object.keys(FAN.preds||{}).forEach(function(mid){
     var m=DATA.matches.filter(function(x){return x.id===mid})[0];
-    if(!m||m.status!=="ft") return;
+    if(!m||m.status!=="ft"||!predDone(mid)) return;
     total++;
     var p=FAN.preds[mid];
     if(+p.h===m.hs && +p.a===m.as){pts+=3;exact++;ok++}
@@ -3753,7 +3774,7 @@ function pushPreds(){
   var p = FAN.preds || {};
   Object.keys(p).forEach(function(mid){
     var v = p[mid];
-    if(!v || v.h==="" || v.a==="") return;
+    if(!v || !v.c || v.h==="" || v.a==="") return;
     api("/predictions",{method:"POST",fan:true,body:{matchId:mid,home:+v.h,away:+v.a}}).catch(function(){});
   });
 }
@@ -3770,9 +3791,9 @@ function viewFan(){
       return m.status==="sched" && m.date>=t && koMs(m)>nowMs;
     }).sort(function(a,b){return a.date.localeCompare(b.date)}).slice(0,8);
   var locked=DATA.matches.filter(function(m){
-      return m.date===t && koMs(m)<=nowMs && m.status!=="ft" && (FAN.preds||{})[m.id];
+      return m.date===t && koMs(m)<=nowMs && m.status!=="ft" && predDone(m.id);
     }).sort(function(a,b){return a.date.localeCompare(b.date)});
-  var done=Object.keys(FAN.preds||{}).map(function(id){return DATA.matches.filter(function(m){return m.id===id})[0]})
+  var done=Object.keys(FAN.preds||{}).filter(predDone).map(function(id){return DATA.matches.filter(function(m){return m.id===id})[0]})
     .filter(function(m){return m&&m.status==="ft"}).sort(function(a,b){return b.date.localeCompare(a.date)});
   var h='<div class="sechead"><h2>'+esc(T("fan"))+'</h2><span class="sub">'+esc(T("fanIntro"))+'</span></div>';
   h+=myHero();
@@ -3809,15 +3830,11 @@ function viewFan(){
   if(open.length){
     h+='<div class="card">'+open.map(function(m){
       var p=(FAN.preds||{})[m.id]||{h:"",a:""};
-      return '<div class="mrow" style="cursor:default">'+
+      return '<div class="mrow" style="cursor:default;flex-wrap:wrap">'+
         '<span class="when">'+esc(fmtDate(m.date,true))+'<br>'+esc(m.time||"")+'</span>'+
-        '<span class="teams"><span class="mteam">'+crest(m.home)+'<span class="nm">'+esc(club(m.home).short)+'</span></span>'+
+        '<span class="teams" style="min-width:150px"><span class="mteam">'+crest(m.home)+'<span class="nm">'+esc(club(m.home).short)+'</span></span>'+
         '<span class="mteam">'+crest(m.away)+'<span class="nm">'+esc(club(m.away).short)+'</span></span></span>'+
-        '<span style="display:flex;gap:5px;align-items:center">'+
-          '<input class="predin" data-pm="'+m.id+'" data-side="h" type="number" min="0" max="20" value="'+esc(p.h)+'" style="width:44px;text-align:center;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface)">'+
-          '<span class="muted">–</span>'+
-          '<input class="predin" data-pm="'+m.id+'" data-side="a" type="number" min="0" max="20" value="'+esc(p.a)+'" style="width:44px;text-align:center;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface)">'+
-        '</span></div>';
+        predBox(m,44)+'</div>';
     }).join("")+'</div>';
   }
   if(locked.length){
@@ -4244,10 +4261,7 @@ function openMatch(id){
     var pr=(FAN.preds||{})[m.id]||{h:"",a:""};
     h+='<div class="hr"></div><div class="eyebrow">'+esc(T("predict"))+'</div>'+
       '<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px">'+
-      '<b style="font-size:13px">'+esc(club(m.home).abbr)+'</b>'+
-      '<input class="predin" data-pm="'+m.id+'" data-side="h" type="number" min="0" max="20" value="'+esc(pr.h)+'" style="width:52px;text-align:center;padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--surface)">'+
-      '<span class="muted">\u2013</span>'+
-      '<input class="predin" data-pm="'+m.id+'" data-side="a" type="number" min="0" max="20" value="'+esc(pr.a)+'" style="width:52px;text-align:center;padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--surface)">'+
+      '<b style="font-size:13px">'+esc(club(m.home).abbr)+'</b>'+predBox(m,52)+
       '<b style="font-size:13px">'+esc(club(m.away).abbr)+'</b></div>'+
       '<p class="muted" style="font-size:11.5px;text-align:center;margin:8px 0 0">'+esc(T("fanIntro"))+'</p>';
   }
@@ -5388,7 +5402,7 @@ function viewProfile(){
     '<button class="prow" data-act="openpicker"><span class="pic">'+IC.clubs+'</span><span class="lbl">'+esc(L("Mi klubnan","My clubs"))+'</span>'+
       '<span class="sub2">'+esc(FAN.clubs.length?(prim||FAN.clubs.length+"")+(FAN.clubs.length>1?" +"+(FAN.clubs.length-1):""):T("nothingYet"))+'</span><span class="chev">›</span></button>'+
     '<button class="prow" data-go="fan"><span class="pic">'+IC.fan+'</span><span class="lbl">'+esc(L("Mi pronóstiko","My predictions"))+'</span>'+
-      '<span class="sub2">'+esc(String(Object.keys(FAN.preds||{}).length))+'</span><span class="chev">›</span></button>'+
+      '<span class="sub2">'+esc(String(Object.keys(FAN.preds||{}).filter(predDone).length))+'</span><span class="chev">›</span></button>'+
     '<button class="prow" data-go="search"><span class="pic">'+IC.search+'</span><span class="lbl">'+esc(T("searchT"))+'</span><span class="chev">›</span></button>'+
     '</div>';
 
@@ -5999,6 +6013,26 @@ document.addEventListener("click",function(ev){
       if(R.page==="admin") { go("home") } else { render() }
       break;
     case "refopen": refOpen=a.getAttribute("data-m"); refBack=false; render(); toTop(); break;
+    case "predconfirm": {
+      var pmid=a.getAttribute("data-m");
+      /* Read the boxes themselves: a number typed but not yet left has fired no change event. */
+      var bx=a.parentNode.querySelectorAll(".predin"), ph=bx[0]?bx[0].value.trim():"", pa2=bx[1]?bx[1].value.trim():"";
+      if(ph===""||pa2===""||!(+ph>=0&&+ph<=20)||!(+pa2>=0&&+pa2<=20)||ph.indexOf(".")>=0||pa2.indexOf(".")>=0){
+        toast(L("Yena tur dos resultado promé","Fill in both scores first")); break }
+      var pmm=DATA.matches.filter(function(x){return x.id===pmid})[0];
+      if(pmm && new Date(pmm.date+"T"+(pmm.time||"00:00")+":00-04:00").getTime()<=Date.now()){
+        toast(L("E partido a kuminsá kaba","This match has already started")); render(); break }
+      if(!confirm((pmm?club(pmm.home).short+" "+(+ph)+" – "+(+pa2)+" "+club(pmm.away).short+"\n\n":"")+
+        L("Konfirmá bo pronóstiko? Despues bo no por kambi'é mas.","Confirm your prediction? You cannot change it afterwards."))) break;
+      FAN.preds=FAN.preds||{};
+      FAN.preds[pmid]={h:String(+ph),a:String(+pa2),c:1}; saveFan();
+      if(FANU) api("/predictions",{method:"POST",fan:true,body:{matchId:pmid,home:+ph,away:+pa2}})
+        .catch(function(e){ if(e && e.status===409) toast(e.message) });
+      toast(T("confirmed"));
+      render();
+      if(openMatchId===pmid && document.querySelector("#modalRoot .modal")) openMatch(pmid);
+      break;
+    }
     case "refback": refOpen=""; refBack=true; render(); toTop(); break;
     case "refstart": {
       var sid=a.getAttribute("data-m");
@@ -6440,12 +6474,9 @@ document.addEventListener("change",function(ev){
   if(t.classList&&t.classList.contains("predin")){
     var mid=t.getAttribute("data-pm"), side=t.getAttribute("data-side");
     FAN.preds=FAN.preds||{}; FAN.preds[mid]=FAN.preds[mid]||{h:"",a:""};
-    FAN.preds[mid][side]=t.value; saveFan();
-    var pv=FAN.preds[mid];
-    if(FANU && pv.h!=="" && pv.a!==""){
-      api("/predictions",{method:"POST",fan:true,body:{matchId:mid,home:+pv.h,away:+pv.a}})
-        .catch(function(){});
-    }
+    if(FAN.preds[mid].c) return;
+    /* Only a draft until he presses Confirm. Nothing goes to the server yet. */
+    FAN.preds[mid][side]=t.value; lsSet("kf.fan",FAN);
   }
 });
 window.addEventListener("hashchange",function(){ parseHash(); closeModal(); render() });
