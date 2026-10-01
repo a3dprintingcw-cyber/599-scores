@@ -321,7 +321,7 @@ a{color:var(--accent);text-decoration:none}
   border-radius:999px;padding:10px 16px;margin:12px 0}
 .searchbox input{border:0;background:none;color:var(--ink);font:inherit;font-size:15px;flex:1;outline:none;padding:0}
 .searchbox svg{width:18px;height:18px;color:var(--ink-3);flex:none}
-.kowrap{padding:12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.card.kowrap{padding:12px 10px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;overscroll-behavior-x:contain}
 .kobracket{position:relative;margin:0 auto}
 .shprev{max-width:360px;margin:0 auto}
 .lpitch{position:relative;border-radius:14px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
@@ -3136,7 +3136,7 @@ function newsItem(n){
 }
 
 /* ───────── referee console ───────── */
-var refMatches = null, refOpen = "";
+var refMatches = null, refOpen = "", refBack = false;
 /* Apply what the server just told us, rather than asking it again.
    One less round trip, and it still works on a bad connection at the pitch. */
 function refApply(mid, patch){
@@ -3232,7 +3232,7 @@ function viewRef(){
 
   /* Never open a game by itself unless it is the only one left to do. */
   var todo = RL.filter(function(x){ return !((x.state&&x.state.confirmed) || x.feedStatus==="ft") });
-  var m = RL.filter(function(x){ return x.id === refOpen })[0] || (todo.length === 1 ? todo[0] : null);
+  var m = RL.filter(function(x){ return x.id === refOpen })[0] || (todo.length === 1 && !refBack ? todo[0] : null);
   if(!m){
     h += '<div class="card">' + RL.map(function(x){
       var shut = (x.state&&x.state.confirmed) || x.feedStatus==="ft";
@@ -3248,7 +3248,18 @@ function viewRef(){
     }).join("") + '</div>';
     return h;
   }
-  return h + refPanel(m) + rewardsPanel();
+  /* A way back to the list without signing out, and the other games that are
+     running right now one tap away, so two games can be scored side by side. */
+  var inPlay = function(x){ return x.state && !x.state.confirmed && (x.state.status==="live"||x.state.status==="ht") };
+  var others = RL.filter(function(x){ return x.id !== m.id && inPlay(x) });
+  var bar = '<div class="btnrow" style="margin:0 0 10px;flex-wrap:wrap">';
+  if(RL.length > 1) bar += '<button class="btn ghost sm" data-act="refback">‹ '+esc(L("Tur partido","All games"))+'</button>';
+  bar += others.map(function(x){
+    return '<button class="btn ghost sm" data-act="refopen" data-m="'+esc(x.id)+'"><span class="livedot"></span> '+
+      esc(club(x.home).abbr)+' '+x.state.hs+'-'+x.state.as+' '+esc(club(x.away).abbr)+' · '+
+      (x.state.status==="ht" ? "HT" : clockSpan(x.id))+'</button>';
+  }).join("") + '</div>';
+  return h + bar + refPanel(m) + rewardsPanel();
 }
 
 function refPanel(m){
@@ -3980,9 +3991,9 @@ function askScorer(mid, team, eventId, min){
     return;
   }
   var sq=(DATA.players||[]).filter(function(x){return x.club===team});
-  var L=(LINEUP[mid]||{})[team];
+  var LU=(LINEUP[mid]||{})[team];
   var names=[];
-  if(L && (L.starters||[]).length) names=L.starters.concat(L.subs||[]);
+  if(LU && (LU.starters||[]).length) names=LU.starters.concat(LU.subs||[]);
   else names=sq.map(function(x){return x.name});
   var chips=names.slice(0,26).map(function(n){
     return '<button class="pick2" data-act="scorerpick" data-name="'+esc(n)+'">'+esc(n)+'</button>';
@@ -5984,10 +5995,11 @@ document.addEventListener("click",function(ev){
     }
     case "reflogout":
       api("/auth/logout",{method:"POST",auth:true}).catch(function(){});
-      REF=null; refMatches=null; refOpen=""; lsSet("kf.ref",null); refReload();
+      REF=null; refMatches=null; refOpen=""; refBack=false; lsSet("kf.ref",null); refReload();
       if(R.page==="admin") { go("home") } else { render() }
       break;
-    case "refopen": refOpen=a.getAttribute("data-m"); render(); break;
+    case "refopen": refOpen=a.getAttribute("data-m"); refBack=false; render(); toTop(); break;
+    case "refback": refOpen=""; refBack=true; render(); toTop(); break;
     case "refstart": {
       var sid=a.getAttribute("data-m");
       refSend("/ref/match/"+sid+"/start",{minute:0}).then(function(r){
@@ -6442,7 +6454,8 @@ window.addEventListener("hashchange",function(){ parseHash(); closeModal(); rend
 var swX=0,swY=0,swOn=false;
 document.addEventListener("touchstart",function(e){
   var p=e.target.closest&&e.target.closest("#daypanel");
-  if(!p||e.touches.length!==1){ swOn=false; return }
+  /* A sideways drag on the knockout bracket scrolls the bracket, not the day. */
+  if(!p||e.touches.length!==1||e.target.closest(".kowrap")){ swOn=false; return }
   swX=e.touches[0].clientX; swY=e.touches[0].clientY; swOn=true;
 },{passive:true});
 document.addEventListener("touchend",function(e){
