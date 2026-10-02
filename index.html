@@ -3367,6 +3367,18 @@ function refPanel(m){
     '<button class="bigbtn" data-act="refcard" data-m="'+esc(m.id)+'" data-team="'+esc(m.home)+'"><b>🟨 '+esc(H.abbr)+'</b><small>'+esc(T("yellow"))+'</small></button>'+
     '<button class="bigbtn" data-act="refcard" data-m="'+esc(m.id)+'" data-team="'+esc(m.away)+'"><b>🟨 '+esc(A.abbr)+'</b><small>'+esc(T("yellow"))+'</small></button>'+
   '</div>';
+  /* The rarer things: a penalty that went in, one that did not, a red card.
+     Smaller buttons, same one tap, and each asks for the name afterwards. */
+  h += '<div class="reftap" style="margin-top:8px">'+[
+      ["refgoal","pen","⚽ Pen.",L("Penalti gol","Penalty scored"),""],
+      ["refcard","pm","❌ Pen.",L("Penalti fayá","Penalty missed"),""],
+      ["refcard","rc","🟥",T("red"),""]
+    ].map(function(b){
+      return [[m.home,H],[m.away,A]].map(function(tm){
+        return '<button class="bigbtn" style="padding:10px 8px;min-height:0" data-act="'+b[0]+'" data-t="'+b[1]+'" data-m="'+esc(m.id)+'" data-team="'+esc(tm[0])+'">'+
+          '<b style="font-size:14px">'+b[2]+' '+esc(tm[1].abbr)+'</b><small>'+esc(b[3])+'</small></button>';
+      }).join("");
+    }).join("")+'</div>';
 
   h += '<div class="btnrow" style="margin:4px 0 12px;flex-wrap:wrap">'+
     '<button class="btn ghost sm" data-act="refht" data-m="'+esc(m.id)+'">'+esc(L("Mitar tempo (HT)","Half time (HT)"))+'</button>'+
@@ -3402,13 +3414,15 @@ function refEventList(m){
   evs = refEvents[m.id] || [];
   if(!evs.length) return '<div class="card"><div class="empty" style="padding:16px"><p>'+
     esc(L("Ainda nada. Primi un bòter ariba ora algu pasa.","Nothing yet. Press a button above when something happens."))+'</p></div></div>';
-  var ic = { goal:"⚽", pen:"⚽", og:"⚽", yc:"🟨", rc:"🟥" };
+  var ic = { goal:"⚽", pen:"⚽", og:"⚽", yc:"🟨", rc:"🟥", pm:"❌" };
   return '<div class="card">'+evs.slice().reverse().map(function(e){
     return '<div class="lb"><span class="rk">'+e.min+'′</span>'+
       '<span class="who"><b>'+(ic[e.type]||"")+' '+esc(club(e.team).short)+
-        (e.type==="og"?' <span class="pill">'+esc(T("ownGoal"))+'</span>':'')+'</b>'+
+        (e.type==="og"?' <span class="pill">'+esc(T("ownGoal"))+'</span>':'')+
+        (e.type==="pen"?' <span class="pill">'+esc(L("penalti","penalty"))+'</span>':'')+
+        (e.type==="pm"?' <span class="pill">'+esc(L("penalti fayá","penalty missed"))+'</span>':'')+'</b>'+
       '<small>'+esc(e.player||"")+'</small></span>'+
-      (/^(goal|pen|og)$/.test(e.type)?'<button class="btn ghost sm" data-act="refname2" data-m="'+esc(m.id)+'" data-e="'+esc(e.id)+'" data-team="'+esc(e.team)+'" data-min="'+esc(String(e.min))+'">'+
+      (/^(goal|pen|og|pm|rc|yc)$/.test(e.type)?'<button class="btn ghost sm" data-act="refname2" data-t="'+esc(e.type)+'" data-m="'+esc(m.id)+'" data-e="'+esc(e.id)+'" data-team="'+esc(e.team)+'" data-min="'+esc(String(e.min))+'">'+
         esc(e.player?(L("Kambia","Edit")):(L("Ken?","Who?")))+'</button>':'')+
       '<button class="btn danger sm" data-act="refundo" data-m="'+esc(m.id)+'" data-e="'+esc(e.id)+'">✕</button></div>';
   }).join("")+'</div>';
@@ -3604,7 +3618,7 @@ function viewPlayer(){
     h+=mine.slice(0,10).map(function(m){
       var ev=(m.events||[]).filter(function(e){return e.p===p.id||e.a===p.id});
       var txt=ev.map(function(e){
-        var lbl=e.t==="goal"?"⚽":e.t==="pen"?"⚽ (p)":e.t==="og"?"⚽ (og)":e.t==="yc"?"🟨":e.t==="rc"?"🟥":"";
+        var lbl=e.t==="goal"?"⚽":e.t==="pen"?"⚽ (p)":e.t==="og"?"⚽ (og)":e.t==="yc"?"🟨":e.t==="rc"?"🟥":e.t==="pm"?"❌ (p)":"";
         return (e.a===p.id?"↗ ":lbl+" ")+e.min+"'";
       }).join(" · ");
       return '<button class="lb" data-match="'+m.id+'"><span class="rk">'+esc(fmtDate(m.date).split(" ")[0])+'</span>'+
@@ -3991,20 +4005,22 @@ function evLabel(e){
   if(e.t==="goal") return "⚽";
   if(e.t==="pen") return "⚽ "+T("penalty");
   if(e.t==="og") return "⚽ "+T("ownGoal");
+  if(e.t==="pm") return "❌ "+L("penalti fayá","penalty missed");
   if(e.t==="yc") return '<i style="width:9px;height:12px;border-radius:2px;background:var(--gold);display:inline-block"></i>';
   if(e.t==="rc") return '<i style="width:9px;height:12px;border-radius:2px;background:var(--loss);display:inline-block"></i>';
   return "";
 }
 /* Who scored. Big buttons for the squad we know about, and a box for the many
    players no squad file of ours has ever heard of. */
-function askScorer(mid, team, eventId, min){
+function askScorer(mid, team, eventId, min, type){
+  type = type || "goal";
   /* The lineup he typed in is the best list of names for this match, better
      than any squad file, so fetch it first if we do not have it yet. */
   if(API && LINEUP[mid]===undefined){
     LINEUP[mid]="loading";
     api("/lineup?m="+encodeURIComponent(mid))
-      .then(function(j){ LINEUP[mid]=(j&&j.teams)||{}; askScorer(mid,team,eventId,min) })
-      .catch(function(){ LINEUP[mid]={}; askScorer(mid,team,eventId,min) });
+      .then(function(j){ LINEUP[mid]=(j&&j.teams)||{}; askScorer(mid,team,eventId,min,type) })
+      .catch(function(){ LINEUP[mid]={}; askScorer(mid,team,eventId,min,type) });
     return;
   }
   var sq=(DATA.players||[]).filter(function(x){return x.club===team});
@@ -4015,12 +4031,18 @@ function askScorer(mid, team, eventId, min){
   var chips=names.slice(0,26).map(function(n){
     return '<button class="pick2" data-act="scorerpick" data-name="'+esc(n)+'">'+esc(n)+'</button>';
   }).join("");
-  openModal("\u26BD "+min+"\u2032 "+club(team).short+" · "+(L("Ken a mark?","Who scored?")),
+  var ask = { goal:["\u26BD",L("Ken a mark?","Who scored?")],
+              og:["\u26BD",L("Ken a hasi e gol propio?","Whose own goal?")],
+              pen:["\u26BD",L("Ken a mark e penalti?","Who scored the penalty?")],
+              pm:["\u274C",L("Ken a faya e penalti?","Who missed the penalty?")],
+              rc:["\uD83D\uDFE5",L("Ken a haña karchi kòrá?","Who got the red card?")],
+              yc:["\uD83D\uDFE8",L("Ken a haña karchi hel?","Who got the yellow card?")] }[type] || ["",""];
+  openModal(ask[0]+" "+min+"\u2032 "+club(team).short+" · "+ask[1],
     (chips?'<div class="chipwrap">'+chips+'</div>':'')+
     '<div class="field" style="margin-top:10px"><label>'+esc(L("Nòmber","Name"))+'</label>'+
       '<input id="scname" autocomplete="off" placeholder="'+esc(L("Skirbi òf primi ariba","Type or tap above"))+'"></div>'+
-    '<div class="field"><label>'+esc(L("Asistensia (opshonal)","Assist (optional)"))+'</label>'+
-      '<input id="scassist" autocomplete="off"></div>',
+    (type==="goal" ? '<div class="field"><label>'+esc(L("Asistensia (opshonal)","Assist (optional)"))+'</label>'+
+      '<input id="scassist" autocomplete="off"></div>' : ''),
     '<button class="btn" data-act="scorersave" data-m="'+esc(mid)+'" data-e="'+esc(eventId)+'">'+esc(T("save"))+'</button>'+
     '<button class="btn ghost" data-act="closemodal">'+esc(L("Despues","Later"))+'</button>');
 }
@@ -5072,7 +5094,7 @@ function renderMatchEditor(id){
   }).join(""):'<div class="empty" style="padding:18px"><p>'+esc(T("nothingYet"))+'</p></div>')+'</div>';
   h+='<div class="frow3" style="margin-top:10px">'+
     '<div class="field"><label>'+esc(L("Tipo","Type"))+'</label><select data-ek="t">'+
-      [["goal","⚽ "+T("goals")],["pen","⚽ "+T("penalty")],["og","⚽ "+T("ownGoal")],["yc",T("yellow")],["rc",T("red")]].map(function(o){
+      [["goal","⚽ "+T("goals")],["pen","⚽ "+T("penalty")],["og","⚽ "+T("ownGoal")],["pm","❌ "+L("penalti fayá","penalty missed")],["yc",T("yellow")],["rc",T("red")]].map(function(o){
         return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'}).join("")+'</select></div>'+
     '<div class="field"><label>'+esc(T("minute"))+'</label><input data-ek="min" type="number" min="1" max="120"></div>'+
     '<div class="field"><label>'+esc(L("Hungadó","Player"))+'</label><select data-ek="p"><option value="">—</option>'+
@@ -6107,15 +6129,16 @@ document.addEventListener("click",function(ev){
     /* One tap. No dialogs. A referee is not going to fill in a form mid match. */
     case "refgoal": {
       var mid=a.getAttribute("data-m"), team=a.getAttribute("data-team"), gmin=refGuessMinute(mid);
-      refSend("/ref/match/"+mid+"/event",{type:"goal",team:team,min:gmin})
+      var gty=a.getAttribute("data-t")==="pen" ? "pen" : "goal";
+      refSend("/ref/match/"+mid+"/event",{type:gty,team:team,min:gmin})
         .then(function(r){
           if(r&&r.queued){ toast(T("queued")) }
           else { refApply(mid,{status:"live",hs:r.hs,as:r.as,minute:gmin}); refEvents[mid]=null }
-          toast("⚽ "+gmin+"′ "+club(team).short);
+          toast("⚽ "+(gty==="pen"?"(pen) ":"")+gmin+"′ "+club(team).short);
           render(); pollLive();
           /* The goal is already in. Asking who scored afterwards means the tap
              is never slowed down and nothing is lost if he never answers. */
-          if(r && r.eventId) askScorer(mid, team, r.eventId, gmin);
+          if(r && r.eventId) askScorer(mid, team, r.eventId, gmin, gty);
         }).catch(function(e){ toast(e.message) });
       break;
     }
@@ -6140,7 +6163,7 @@ document.addEventListener("click",function(ev){
     }
     case "refname2": {
       askScorer(a.getAttribute("data-m"), a.getAttribute("data-team"),
-                a.getAttribute("data-e"), a.getAttribute("data-min"));
+                a.getAttribute("data-e"), a.getAttribute("data-min"), a.getAttribute("data-t"));
       break;
     }
     case "scorerpick": {
@@ -6160,12 +6183,17 @@ document.addEventListener("click",function(ev){
     }
     case "refcard": {
       var mid2=a.getAttribute("data-m"), team2=a.getAttribute("data-team"), cmin=refGuessMinute(mid2);
-      refSend("/ref/match/"+mid2+"/event",{type:"yc",team:team2,min:cmin})
+      var cty=a.getAttribute("data-t"); if(cty!=="rc" && cty!=="pm") cty="yc";
+      var cic={yc:"🟨",rc:"🟥",pm:"❌"}[cty];
+      refSend("/ref/match/"+mid2+"/event",{type:cty,team:team2,min:cmin})
         .then(function(r){
           if(r&&r.queued) toast(T("queued"));
           else { refApply(mid2,{status:"live",minute:cmin}); refEvents[mid2]=null }
-          toast("🟨 "+cmin+"′ "+club(team2).short);
+          toast(cic+" "+cmin+"′ "+club(team2).short);
           render(); pollLive();
+          /* A red card and a missed penalty are worth a name. A yellow can be
+             named later from the list, so the tap stays a tap. */
+          if(cty!=="yc" && r && r.eventId) askScorer(mid2, team2, r.eventId, cmin, cty);
         }).catch(function(e){ toast(e.message) });
       break;
     }
